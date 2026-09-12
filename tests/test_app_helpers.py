@@ -1,8 +1,10 @@
 import pandas as pd
+import pytest
 
 from app import (
     ai_error_message,
     build_analytics_payload,
+    build_monthly_series,
     build_period_series,
     date_like_column_names,
     format_column_option,
@@ -108,6 +110,53 @@ def test_build_period_series_handles_duplicate_column_names_positionally():
 
     assert list(series.index) == ["2023-01-01", "2023-02-01"]
     assert list(series.values) == [100.0, 110.0]
+
+
+def test_build_monthly_series_aggregates_multiple_rows_in_same_month():
+    normalized_df = pd.DataFrame({
+        "PurchaseDate": pd.to_datetime(["2023-01-03", "2023-01-15", "2023-02-01"]),
+        "TotalPrice": [500.0, 300.0, 700.0],
+    })
+
+    series = build_monthly_series(normalized_df, value_position=1, period_position=0)
+
+    assert list(series.index) == ["2023-01", "2023-02"]
+    assert list(series.values) == [800.0, 700.0]
+
+
+def test_build_monthly_series_sorts_chronologically_regardless_of_row_order():
+    normalized_df = pd.DataFrame({
+        "PurchaseDate": pd.to_datetime(["2024-03-05", "2025-06-21", "2023-06-25"]),
+        "TotalPrice": [100.0, 200.0, 50.0],
+    })
+
+    series = build_monthly_series(normalized_df, value_position=1, period_position=0)
+
+    assert list(series.index) == ["2023-06", "2024-03", "2025-06"]
+    assert list(series.values) == [50.0, 100.0, 200.0]
+
+
+def test_build_monthly_series_handles_duplicate_column_names_positionally():
+    # Both columns are named "col"; position 0 holds dates, position 1 holds values.
+    normalized_df = pd.DataFrame(
+        [[pd.Timestamp("2023-01-03"), 500.0], [pd.Timestamp("2023-01-15"), 300.0]],
+        columns=["col", "col"],
+    )
+
+    series = build_monthly_series(normalized_df, value_position=1, period_position=0)
+
+    assert list(series.index) == ["2023-01"]
+    assert list(series.values) == [800.0]
+
+
+def test_build_monthly_series_raises_value_error_for_non_datetime_period_column():
+    normalized_df = pd.DataFrame({
+        "label": ["not", "a", "date"],
+        "amount": [1.0, 2.0, 3.0],
+    })
+
+    with pytest.raises(ValueError):
+        build_monthly_series(normalized_df, value_position=1, period_position=0)
 
 
 def test_format_column_option_returns_plain_name_when_unique():

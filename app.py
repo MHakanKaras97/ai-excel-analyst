@@ -71,6 +71,29 @@ def build_period_series(normalized_df: pd.DataFrame, value_position: int, period
     )
 
 
+def build_monthly_series(normalized_df: pd.DataFrame, value_position: int, period_position: int) -> pd.Series:
+    """Aggregate a raw row-level value/period series into monthly sums.
+
+    Reuses `build_period_series` for the positional (duplicate-column-safe)
+    extraction, then parses the period axis to datetime, drops rows that
+    don't parse, sums by calendar month, and sorts chronologically. Period
+    labels are formatted as plain "YYYY-MM" strings so the result stays
+    JSON-serializable for `detect_trend`/`compare_periods` without any change
+    to analytics_engine.
+    """
+    raw_series = build_period_series(normalized_df, value_position, period_position)
+
+    period_dt = pd.to_datetime(raw_series.index, errors="coerce")
+    if period_dt.notna().sum() == 0:
+        raise ValueError("Period column does not contain datetime-compatible values.")
+
+    valid = period_dt.notna()
+    monthly = pd.Series(raw_series.to_numpy()[valid], index=period_dt[valid].to_period("M"))
+    monthly = monthly.groupby(level=0).sum().sort_index()
+    monthly.index = monthly.index.astype(str)
+    return monthly
+
+
 def build_analytics_payload(numeric_summary: dict, date_summary: dict, trend: dict | None = None,
                              period_comparison: dict | None = None) -> dict:
     payload = {"numeric_summary": numeric_summary, "date_summary": date_summary}
@@ -158,12 +181,17 @@ def main():
         period_option = st.selectbox(
             "Period column", period_options, format_func=lambda opt: format_column_option(opt, period_options)
         )
-        series = build_period_series(normalized_df, value_option[0], period_option[0])
-        trend = detect_trend(series)
-        period_comparison = compare_periods(series)
-        st.write(f"Trend: {trend['trend']}")
-        if period_comparison["comparisons"]:
-            st.dataframe(pd.DataFrame(period_comparison["comparisons"]))
+        st.caption("Values are aggregated by month (sum) before trend analysis.")
+        try:
+            series = build_monthly_series(normalized_df, value_option[0], period_option[0])
+        except ValueError as exc:
+            st.error(f"Could not aggregate the selected period column: {exc}")
+        else:
+            trend = detect_trend(series)
+            period_comparison = compare_periods(series)
+            st.write(f"Trend: {trend['trend']}")
+            if period_comparison["comparisons"]:
+                st.dataframe(pd.DataFrame(period_comparison["comparisons"]))
 
     analytics_payload = build_analytics_payload(numeric_summary, date_summary, trend, period_comparison)
 
