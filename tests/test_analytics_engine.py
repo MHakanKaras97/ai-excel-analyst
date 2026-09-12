@@ -1,6 +1,12 @@
 import pandas as pd
 
-from src.analytics_engine import analyze_dates, analyze_numeric, compare_values
+from src.analytics_engine import (
+    analyze_dates,
+    analyze_numeric,
+    compare_periods,
+    compare_values,
+    detect_trend,
+)
 
 
 def test_analyze_numeric_normal_mixed_dataframe():
@@ -181,3 +187,177 @@ def test_analyze_functions_do_not_mutate_original_dataframe():
     analyze_dates(original)
 
     pd.testing.assert_frame_equal(original, before)
+
+
+def test_compare_periods_normal_increasing_sequence():
+    values = pd.Series([100, 110, 121], index=["Q1", "Q2", "Q3"])
+
+    result = compare_periods(values)
+
+    assert result["periods"] == ["Q1", "Q2", "Q3"]
+    assert result["insufficient_data"] is False
+    assert len(result["comparisons"]) == 2
+    assert result["comparisons"][0]["from_period"] == "Q1"
+    assert result["comparisons"][0]["to_period"] == "Q2"
+    assert result["comparisons"][0]["absolute_change"] == 10
+    assert result["valid_comparison_count"] == 2
+    assert result["invalid_comparison_count"] == 0
+
+
+def test_compare_periods_empty_series():
+    values = pd.Series([], dtype="float64")
+
+    result = compare_periods(values)
+
+    assert result["insufficient_data"] is True
+    assert result["comparisons"] == []
+    assert result["valid_comparison_count"] == 0
+    assert result["invalid_comparison_count"] == 0
+
+
+def test_compare_periods_single_value_series():
+    values = pd.Series([100], index=["Q1"])
+
+    result = compare_periods(values)
+
+    assert result["insufficient_data"] is True
+    assert result["comparisons"] == []
+
+
+def test_compare_periods_all_missing_values():
+    values = pd.Series([None, None, None], index=["Q1", "Q2", "Q3"], dtype="float64")
+
+    result = compare_periods(values)
+
+    assert result["insufficient_data"] is False
+    assert result["valid_comparison_count"] == 0
+    assert result["invalid_comparison_count"] == 2
+    assert all(c["reason"] == "missing_value" for c in result["comparisons"])
+
+
+def test_compare_periods_interspersed_missing_values():
+    values = pd.Series([100, None, 120], index=["Q1", "Q2", "Q3"])
+
+    result = compare_periods(values)
+
+    assert result["comparisons"][0]["is_valid"] is False
+    assert result["comparisons"][0]["reason"] == "missing_value"
+    assert result["comparisons"][1]["is_valid"] is False
+    assert result["comparisons"][1]["reason"] == "missing_value"
+    assert result["valid_comparison_count"] == 0
+    assert result["invalid_comparison_count"] == 2
+
+
+def test_compare_periods_zero_crossing_division_by_zero():
+    values = pd.Series([0, 50], index=["Q1", "Q2"])
+
+    result = compare_periods(values)
+
+    comparison = result["comparisons"][0]
+    assert comparison["is_valid"] is False
+    assert comparison["reason"] == "division_by_zero"
+    assert comparison["absolute_change"] == 50
+    assert comparison["percentage_change"] is None
+    assert result["valid_comparison_count"] == 0
+    assert result["invalid_comparison_count"] == 1
+
+
+def test_compare_periods_duplicate_period_labels():
+    values = pd.Series([100, 150, 200], index=["Q1", "Q1", "Q1"])
+
+    result = compare_periods(values)
+
+    assert len(result["comparisons"]) == 2
+    assert result["comparisons"][0]["absolute_change"] == 50
+    assert result["comparisons"][1]["absolute_change"] == 50
+
+
+def test_compare_periods_non_numeric_dtype():
+    values = pd.Series(["a", "b", "c"], index=["Q1", "Q2", "Q3"])
+
+    result = compare_periods(values)
+
+    assert result["insufficient_data"] is True
+    assert result["comparisons"] == []
+
+
+def test_compare_periods_does_not_mutate_original_series():
+    values = pd.Series([100, None, 120], index=["Q1", "Q2", "Q3"])
+    before = values.copy(deep=True)
+
+    compare_periods(values)
+
+    pd.testing.assert_series_equal(values, before)
+
+
+def test_detect_trend_increasing():
+    values = pd.Series([100, 110, 130])
+
+    result = detect_trend(values)
+
+    assert result["trend"] == "increasing"
+    assert result["increase_count"] == 2
+    assert result["decrease_count"] == 0
+    assert result["direction_comparison_count"] == 2
+
+
+def test_detect_trend_decreasing():
+    values = pd.Series([130, 110, 100])
+
+    result = detect_trend(values)
+
+    assert result["trend"] == "decreasing"
+    assert result["decrease_count"] == 2
+
+
+def test_detect_trend_stable():
+    values = pd.Series([100, 100, 100])
+
+    result = detect_trend(values)
+
+    assert result["trend"] == "stable"
+    assert result["no_change_count"] == 2
+
+
+def test_detect_trend_volatile():
+    values = pd.Series([100, 130, 90, 150])
+
+    result = detect_trend(values)
+
+    assert result["trend"] == "volatile"
+    assert result["increase_count"] == 2
+    assert result["decrease_count"] == 1
+
+
+def test_detect_trend_insufficient_data_cases():
+    empty_result = detect_trend(pd.Series([], dtype="float64"))
+    assert empty_result["trend"] == "insufficient_data"
+    assert empty_result["direction_comparison_count"] == 0
+
+    single_result = detect_trend(pd.Series([100]))
+    assert single_result["trend"] == "insufficient_data"
+
+    all_missing_result = detect_trend(pd.Series([None, None], dtype="float64"))
+    assert all_missing_result["trend"] == "insufficient_data"
+    assert all_missing_result["direction_comparison_count"] == 0
+    assert all_missing_result["invalid_comparison_count"] == 1
+
+
+def test_detect_trend_direction_aware_division_by_zero():
+    values = pd.Series([0, 50, 100])
+
+    result = detect_trend(values)
+
+    assert result["trend"] == "increasing"
+    assert result["direction_comparison_count"] == 2
+    assert result["valid_comparison_count"] == 1
+    assert result["invalid_comparison_count"] == 1
+
+
+def test_detect_trend_does_not_mutate_original_series():
+    values = pd.Series([100, 110, 120])
+    before = values.copy(deep=True)
+
+    detect_trend(values)
+
+    pd.testing.assert_series_equal(values, before)

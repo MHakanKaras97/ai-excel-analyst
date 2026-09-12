@@ -132,3 +132,83 @@ def compare_values(previous, current) -> dict:
         "is_valid": True,
         "reason": None,
     }
+
+
+def compare_periods(values: pd.Series) -> dict:
+    periods = [_to_native(label) for label in values.index]
+    n = len(values)
+
+    if n < 2 or not pd.api.types.is_numeric_dtype(values):
+        return {
+            "periods": periods,
+            "comparisons": [],
+            "valid_comparison_count": 0,
+            "invalid_comparison_count": 0,
+            "insufficient_data": True,
+        }
+
+    comparisons = []
+    valid_comparison_count = 0
+    invalid_comparison_count = 0
+
+    for i in range(n - 1):
+        result = compare_values(values.iloc[i], values.iloc[i + 1])
+        comparisons.append({
+            "from_period": periods[i],
+            "to_period": periods[i + 1],
+            **result,
+        })
+        if result["is_valid"]:
+            valid_comparison_count += 1
+        else:
+            invalid_comparison_count += 1
+
+    return {
+        "periods": periods,
+        "comparisons": comparisons,
+        "valid_comparison_count": valid_comparison_count,
+        "invalid_comparison_count": invalid_comparison_count,
+        "insufficient_data": False,
+    }
+
+
+def detect_trend(values: pd.Series) -> dict:
+    periods_result = compare_periods(values)
+
+    increase_count = 0
+    decrease_count = 0
+    no_change_count = 0
+    direction_comparison_count = 0
+
+    for comparison in periods_result["comparisons"]:
+        absolute_change = comparison["absolute_change"]
+        if absolute_change is None:
+            continue
+        direction_comparison_count += 1
+        if absolute_change > 0:
+            increase_count += 1
+        elif absolute_change < 0:
+            decrease_count += 1
+        else:
+            no_change_count += 1
+
+    if direction_comparison_count == 0:
+        trend = "insufficient_data"
+    elif increase_count == direction_comparison_count:
+        trend = "increasing"
+    elif decrease_count == direction_comparison_count:
+        trend = "decreasing"
+    elif no_change_count == direction_comparison_count:
+        trend = "stable"
+    else:
+        trend = "volatile"
+
+    return {
+        "trend": trend,
+        "valid_comparison_count": periods_result["valid_comparison_count"],
+        "invalid_comparison_count": periods_result["invalid_comparison_count"],
+        "direction_comparison_count": direction_comparison_count,
+        "increase_count": increase_count,
+        "decrease_count": decrease_count,
+        "no_change_count": no_change_count,
+    }
