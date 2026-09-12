@@ -1,9 +1,14 @@
+from datetime import date
+
+import numpy as np
 import pandas as pd
 
 
 def _to_native(value):
     if pd.isna(value):
         return None
+    if isinstance(value, (date, np.datetime64)):
+        return pd.Timestamp(value).isoformat()
     if hasattr(value, "item"):
         return value.item()
     return value

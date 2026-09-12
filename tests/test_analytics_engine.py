@@ -1,3 +1,7 @@
+import json
+from datetime import date
+
+import numpy as np
 import pandas as pd
 
 from src.analytics_engine import (
@@ -279,6 +283,61 @@ def test_compare_periods_non_numeric_dtype():
 
     assert result["insufficient_data"] is True
     assert result["comparisons"] == []
+
+
+def test_compare_periods_timestamp_index_labels_are_json_safe():
+    values = pd.Series(
+        [100, 110, 120],
+        index=pd.to_datetime(["2023-01-01", "2023-02-01", "2023-03-01"]),
+    )
+
+    result = compare_periods(values)
+
+    assert result["periods"] == ["2023-01-01T00:00:00", "2023-02-01T00:00:00", "2023-03-01T00:00:00"]
+    assert all(isinstance(p, str) for p in result["periods"])
+    assert result["comparisons"][0]["from_period"] == "2023-01-01T00:00:00"
+    assert result["comparisons"][0]["to_period"] == "2023-02-01T00:00:00"
+    json.dumps(result)  # must not raise
+
+
+def test_compare_periods_python_date_index_labels_are_json_safe():
+    values = pd.Series(
+        [100, 110, 120],
+        index=[date(2023, 1, 1), date(2023, 2, 1), date(2023, 3, 1)],
+    )
+
+    result = compare_periods(values)
+
+    assert result["periods"] == ["2023-01-01T00:00:00", "2023-02-01T00:00:00", "2023-03-01T00:00:00"]
+    json.dumps(result)  # must not raise
+
+
+def test_compare_periods_numpy_datetime64_index_labels_are_json_safe():
+    values = pd.Series(
+        [100, 110],
+        index=pd.Index([np.datetime64("2023-01-01"), np.datetime64("2023-02-01")]),
+    )
+
+    result = compare_periods(values)
+
+    assert result["periods"] == ["2023-01-01T00:00:00", "2023-02-01T00:00:00"]
+    json.dumps(result)  # must not raise
+
+
+def test_to_native_still_handles_strings_ints_floats_numpy_and_missing():
+    values = pd.Series([1, 2], index=["a", "b"])
+
+    result = compare_periods(values)
+
+    assert result["periods"] == ["a", "b"]
+    assert result["comparisons"][0]["previous"] == 1
+    assert result["comparisons"][0]["current"] == 2
+    assert isinstance(result["comparisons"][0]["previous"], int)
+
+    missing_result = compare_values(None, 5.5)
+    assert missing_result["previous"] is None
+    assert missing_result["current"] == 5.5
+    assert isinstance(missing_result["current"], float)
 
 
 def test_compare_periods_does_not_mutate_original_series():
