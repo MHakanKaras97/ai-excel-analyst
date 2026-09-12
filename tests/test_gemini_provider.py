@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from src.ai_provider import AIProviderError
@@ -81,6 +83,14 @@ def test_generate_handles_none_text_response(monkeypatch):
 
 def test_generate_raises_provider_unavailable_when_sdk_not_installed(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "env-key")
+
+    # Force `from google import genai` to fail inside _build_client, regardless
+    # of whether google-genai is actually installed in this environment.
+    monkeypatch.setitem(sys.modules, "google.genai", None)
+    google_module = sys.modules.get("google")
+    if google_module is not None:
+        monkeypatch.delattr(google_module, "genai", raising=False)
+
     provider = GeminiProvider()
 
     with pytest.raises(AIProviderError) as exc_info:

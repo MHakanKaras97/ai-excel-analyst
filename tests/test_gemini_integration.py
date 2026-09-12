@@ -24,4 +24,5 @@ def test_gemini_provider_live_call_returns_parseable_insight():
     result = interpret(payload, provider)
 
     assert result["is_valid"] is True
+    assert result["insight"] is not None
     assert isinstance(result["insight"]["summary"], str)
