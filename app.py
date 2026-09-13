@@ -8,6 +8,12 @@ import streamlit as st
 
 from src.ai_interpreter import interpret
 from src.analytics_engine import analyze_dates, analyze_numeric, compare_periods, detect_trend
+from src.chart_builder import (
+    build_missing_values_chart,
+    build_numeric_summary_chart,
+    build_period_change_chart,
+    build_trend_chart,
+)
 from src.data_normalizer import normalize_dataframe
 from src.data_profiler import profile_dataframe
 from src.excel_loader import load_excel
@@ -142,6 +148,7 @@ def main():
 
     st.subheader("Column Information")
     st.dataframe(pd.DataFrame(profile["columns"]))
+    st.plotly_chart(build_missing_values_chart(profile), use_container_width=True)
 
     normalization_result = normalize_dataframe(df)
     normalized_df = normalization_result["normalized_df"]
@@ -153,6 +160,10 @@ def main():
     st.write("Numeric columns")
     if numeric_summary["columns"]:
         st.dataframe(pd.DataFrame(numeric_summary["columns"]))
+        st.plotly_chart(
+            build_numeric_summary_chart(numeric_summary),
+            use_container_width=True,
+        )
     else:
         st.info("No numeric columns found.")
 
@@ -190,8 +201,16 @@ def main():
             trend = detect_trend(series)
             period_comparison = compare_periods(series)
             st.write(f"Trend: {trend['trend']}")
+            st.plotly_chart(
+                build_trend_chart(series),
+                use_container_width=True,
+            )
             if period_comparison["comparisons"]:
                 st.dataframe(pd.DataFrame(period_comparison["comparisons"]))
+                st.plotly_chart(
+                    build_period_change_chart(period_comparison),
+                    use_container_width=True,
+                )
 
     analytics_payload = build_analytics_payload(numeric_summary, date_summary, trend, period_comparison)
 
