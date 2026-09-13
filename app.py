@@ -8,6 +8,7 @@ import streamlit as st
 
 from src.ai_interpreter import interpret
 from src.analytics_engine import analyze_dates, analyze_numeric, compare_periods, detect_trend
+from src.anomaly_detector import detect_iqr_anomalies
 from src.chart_builder import (
     build_missing_values_chart,
     build_numeric_summary_chart,
@@ -101,12 +102,14 @@ def build_monthly_series(normalized_df: pd.DataFrame, value_position: int, perio
 
 
 def build_analytics_payload(numeric_summary: dict, date_summary: dict, trend: dict | None = None,
-                             period_comparison: dict | None = None) -> dict:
+                             period_comparison: dict | None = None, anomalies: dict | None = None) -> dict:
     payload = {"numeric_summary": numeric_summary, "date_summary": date_summary}
     if trend is not None:
         payload["trend"] = trend
     if period_comparison is not None:
         payload["period_comparison"] = period_comparison
+    if anomalies is not None:
+        payload["anomalies"] = anomalies
     return payload
 
 
@@ -175,6 +178,7 @@ def main():
 
     trend = None
     period_comparison = None
+    anomalies = None
     value_options = numeric_column_names(normalized_df)
     period_options = date_like_column_names(profile)
 
@@ -200,6 +204,7 @@ def main():
         else:
             trend = detect_trend(series)
             period_comparison = compare_periods(series)
+            anomalies = detect_iqr_anomalies(series)
             st.write(f"Trend: {trend['trend']}")
             st.plotly_chart(
                 build_trend_chart(series),
@@ -212,7 +217,7 @@ def main():
                     use_container_width=True,
                 )
 
-    analytics_payload = build_analytics_payload(numeric_summary, date_summary, trend, period_comparison)
+    analytics_payload = build_analytics_payload(numeric_summary, date_summary, trend, period_comparison, anomalies)
 
     st.subheader("AI-Generated Insight")
 
