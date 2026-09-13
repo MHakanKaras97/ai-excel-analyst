@@ -11,10 +11,16 @@ LIST_FIELDS = ("key_insights", "warnings", "recommendations")
 # part (3,266,656.8), plain decimals (3266656.8), and plain integers (3266656).
 NUMBER_PATTERN = re.compile(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+\.\d+|-?\d+")
 
-# Period labels like "2023-01" or "2023-01-15" (as produced by compare_periods /
-# build_monthly_series) are dates, not quantities — strip them before number
-# extraction so a year fragment (e.g. "2023") isn't mistaken for a cited metric.
-DATE_LABEL_PATTERN = re.compile(r"\b\d{4}-\d{2}(?:-\d{2})?\b")
+# Period labels like "2023-01", "2023-01-15", or a full ISO timestamp such as
+# "2023-01-15T00:00:00" (as produced by compare_periods / build_monthly_series /
+# analytics_engine's isoformat() dates) are dates, not quantities — strip them
+# before number extraction so a year/day fragment isn't mistaken for a cited
+# metric. The trailing \b alone doesn't fire between a digit and a following
+# letter (e.g. the "T" separator), so the day/time portion must be matched
+# explicitly rather than relying on a boundary right after the date.
+DATE_LABEL_PATTERN = re.compile(
+    r"\b\d{4}-\d{2}(?:-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)?)?\b"
+)
 
 MEANINGFUL_INTEGER_THRESHOLD = 10
 

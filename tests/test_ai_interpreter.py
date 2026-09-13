@@ -192,6 +192,74 @@ def test_interpret_does_not_flag_yyyy_mm_period_labels_as_hallucinated_numbers()
     assert result["reason"] is None
 
 
+def test_interpret_does_not_flag_iso_month_label_as_hallucinated_number():
+    payload = {"date_summary": {"columns": [{"name": "PurchaseDate", "min": "2025-06"}]}}
+    response = json.dumps({
+        "summary": "Activity for 2025-06 was reviewed.",
+        "key_insights": ["The month 2025-06 showed typical activity."],
+        "trend_interpretation": None,
+        "warnings": [],
+        "recommendations": [],
+    })
+    provider = FakeProvider(response=response)
+
+    result = interpret(payload, provider)
+
+    assert result["is_valid"] is True
+    assert result["reason"] is None
+
+
+def test_interpret_does_not_flag_iso_date_label_as_hallucinated_number():
+    payload = {"date_summary": {"columns": [{"name": "PurchaseDate", "max": "2025-06-30"}]}}
+    response = json.dumps({
+        "summary": "The most recent purchase was on 2025-06-30.",
+        "key_insights": ["Activity through 2025-06-30 was reviewed."],
+        "trend_interpretation": None,
+        "warnings": [],
+        "recommendations": [],
+    })
+    provider = FakeProvider(response=response)
+
+    result = interpret(payload, provider)
+
+    assert result["is_valid"] is True
+    assert result["reason"] is None
+
+
+def test_interpret_does_not_flag_iso_timestamp_label_as_hallucinated_number():
+    payload = {"date_summary": {"columns": [{"name": "PurchaseDate", "max": "2025-06-30T00:00:00"}]}}
+    response = json.dumps({
+        "summary": "The dataset spans up to 2025-06-30T00:00:00.",
+        "key_insights": ["The latest timestamp recorded is 2025-06-30T00:00:00."],
+        "trend_interpretation": None,
+        "warnings": [],
+        "recommendations": [],
+    })
+    provider = FakeProvider(response=response)
+
+    result = interpret(payload, provider)
+
+    assert result["is_valid"] is True
+    assert result["reason"] is None
+
+
+def test_interpret_still_rejects_unsupported_number_adjacent_to_iso_timestamp():
+    payload = {"date_summary": {"columns": [{"name": "PurchaseDate", "max": "2025-06-30T00:00:00"}]}}
+    response = json.dumps({
+        "summary": "The dataset spans up to 2025-06-30T00:00:00, with an unprecedented 999999.99 total.",
+        "key_insights": [],
+        "trend_interpretation": None,
+        "warnings": [],
+        "recommendations": [],
+    })
+    provider = FakeProvider(response=response)
+
+    result = interpret(payload, provider)
+
+    assert result["is_valid"] is False
+    assert result["reason"] == "hallucinated_numeric_value"
+
+
 def test_interpret_trend_only_text_without_numbers_passes():
     payload = {"trend": {"trend": "increasing"}}
     response = json.dumps({
