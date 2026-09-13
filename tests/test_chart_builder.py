@@ -102,6 +102,161 @@ def test_build_trend_chart_does_not_mutate_input_series():
     pd.testing.assert_series_equal(series, before)
 
 
+def _anomaly_result(records):
+    return {
+        "method": "iqr",
+        "insufficient_data": False,
+        "sample_size": 5,
+        "lower_bound": 0.0,
+        "upper_bound": 100.0,
+        "anomaly_count": len(records),
+        "anomalies": records,
+    }
+
+
+def _anomaly_record(position, period, value, direction):
+    return {"position": position, "period": period, "value": value, "direction": direction}
+
+
+def test_build_trend_chart_anomalies_none_has_single_trace():
+    series = pd.Series([100.0, 200.0], index=["2023-01", "2023-02"])
+
+    fig = build_trend_chart(series, anomalies=None)
+
+    assert len(fig.data) == 1
+
+
+def test_build_trend_chart_empty_anomalies_list_has_single_trace():
+    series = pd.Series([100.0, 200.0], index=["2023-01", "2023-02"])
+
+    fig = build_trend_chart(series, anomalies=_anomaly_result([]))
+
+    assert len(fig.data) == 1
+
+
+def test_build_trend_chart_one_high_anomaly_adds_marker_trace():
+    series = pd.Series([100.0, 200.0, 9000.0], index=["2023-01", "2023-02", "2023-03"])
+    anomalies = _anomaly_result([_anomaly_record(2, "2023-03", 9000.0, "high")])
+
+    fig = build_trend_chart(series, anomalies=anomalies)
+
+    assert len(fig.data) == 2
+    assert fig.data[1].mode == "markers"
+    assert list(fig.data[1].x) == ["2023-03"]
+    assert list(fig.data[1].y) == [9000.0]
+    assert list(fig.data[1].marker.color) == ["red"]
+
+
+def test_build_trend_chart_one_low_anomaly_adds_marker_trace_with_distinct_color():
+    series = pd.Series([100.0, 200.0, -9000.0], index=["2023-01", "2023-02", "2023-03"])
+    anomalies = _anomaly_result([_anomaly_record(2, "2023-03", -9000.0, "low")])
+
+    fig = build_trend_chart(series, anomalies=anomalies)
+
+    assert len(fig.data) == 2
+    assert list(fig.data[1].y) == [-9000.0]
+    assert list(fig.data[1].marker.color) == ["blue"]
+    assert fig.data[1].marker.color != ("red",)
+
+
+def test_build_trend_chart_multiple_mixed_anomalies_are_all_plotted_with_correct_colors():
+    series = pd.Series(
+        [9000.0, 100.0, 200.0, -9000.0],
+        index=["2023-01", "2023-02", "2023-03", "2023-04"],
+    )
+    anomalies = _anomaly_result([
+        _anomaly_record(0, "2023-01", 9000.0, "high"),
+        _anomaly_record(3, "2023-04", -9000.0, "low"),
+    ])
+
+    fig = build_trend_chart(series, anomalies=anomalies)
+
+    assert len(fig.data) == 2
+    assert list(fig.data[1].x) == ["2023-01", "2023-04"]
+    assert list(fig.data[1].y) == [9000.0, -9000.0]
+    assert list(fig.data[1].marker.color) == ["red", "blue"]
+
+
+def test_build_trend_chart_anomaly_period_and_value_are_used_verbatim_not_reindexed():
+    # The series has a value of 999.0 at "2023-02", but the anomaly record
+    # (as detect_iqr_anomalies would produce for a different point) reports a
+    # different value at that same label — the chart must plot the record's
+    # own value, never re-look up monthly_series by period.
+    series = pd.Series([100.0, 999.0, 300.0], index=["2023-01", "2023-02", "2023-03"])
+    anomalies = _anomaly_result([_anomaly_record(1, "2023-02", 555.0, "high")])
+
+    fig = build_trend_chart(series, anomalies=anomalies)
+
+    assert list(fig.data[1].y) == [555.0]
+
+
+def test_build_trend_chart_handles_duplicate_period_labels_in_anomalies():
+    series = pd.Series([100.0, 9000.0, -9000.0], index=["Q1", "Q1", "Q1"])
+    anomalies = _anomaly_result([
+        _anomaly_record(1, "Q1", 9000.0, "high"),
+        _anomaly_record(2, "Q1", -9000.0, "low"),
+    ])
+
+    fig = build_trend_chart(series, anomalies=anomalies)
+
+    assert list(fig.data[1].x) == ["Q1", "Q1"]
+    assert list(fig.data[1].y) == [9000.0, -9000.0]
+    assert list(fig.data[1].marker.color) == ["red", "blue"]
+
+
+def test_build_trend_chart_preserves_anomaly_record_order():
+    series = pd.Series([9000.0, 100.0, -9000.0], index=["2023-01", "2023-02", "2023-03"])
+    anomalies = _anomaly_result([
+        _anomaly_record(2, "2023-03", -9000.0, "low"),
+        _anomaly_record(0, "2023-01", 9000.0, "high"),
+    ])
+
+    fig = build_trend_chart(series, anomalies=anomalies)
+
+    assert list(fig.data[1].x) == ["2023-03", "2023-01"]
+    assert list(fig.data[1].marker.color) == ["blue", "red"]
+
+
+def test_build_trend_chart_base_trend_trace_unchanged_when_anomalies_present():
+    series = pd.Series([100.0, 200.0, 9000.0], index=["2023-01", "2023-02", "2023-03"])
+    anomalies = _anomaly_result([_anomaly_record(2, "2023-03", 9000.0, "high")])
+
+    fig = build_trend_chart(series, anomalies=anomalies)
+
+    assert fig.data[0].mode == "lines+markers"
+    assert list(fig.data[0].x) == ["2023-01", "2023-02", "2023-03"]
+    assert list(fig.data[0].y) == [100.0, 200.0, 9000.0]
+
+
+def test_build_trend_chart_does_not_mutate_series_or_anomalies_dict():
+    series = pd.Series([100.0, 200.0, 9000.0], index=["2023-01", "2023-02", "2023-03"])
+    series_before = series.copy()
+    anomalies = _anomaly_result([_anomaly_record(2, "2023-03", 9000.0, "high")])
+    anomalies_before = copy.deepcopy(anomalies)
+
+    build_trend_chart(series, anomalies=anomalies)
+
+    pd.testing.assert_series_equal(series, series_before)
+    assert anomalies == anomalies_before
+
+
+def test_build_trend_chart_insufficient_data_anomaly_result_has_single_trace():
+    series = pd.Series([100.0, 200.0], index=["2023-01", "2023-02"])
+    insufficient_data_result = {
+        "method": "iqr",
+        "insufficient_data": True,
+        "sample_size": 2,
+        "lower_bound": None,
+        "upper_bound": None,
+        "anomaly_count": 0,
+        "anomalies": [],
+    }
+
+    fig = build_trend_chart(series, anomalies=insufficient_data_result)
+
+    assert len(fig.data) == 1
+
+
 def _numeric_summary(columns):
     return {"columns": columns}
 

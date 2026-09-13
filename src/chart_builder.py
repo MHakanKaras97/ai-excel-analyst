@@ -5,19 +5,42 @@ DEFAULT_TREND_CHART_TITLE = "Monthly Trend"
 
 SUPPORTED_NUMERIC_METRICS = {"sum", "mean", "median", "min", "max", "std", "count"}
 
+ANOMALY_DIRECTION_COLORS = {"high": "red", "low": "blue"}
 
-def build_trend_chart(monthly_series: pd.Series, title: str | None = None) -> go.Figure:
+
+def build_trend_chart(
+    monthly_series: pd.Series,
+    title: str | None = None,
+    anomalies: dict | None = None,
+) -> go.Figure:
     """Render an already-aggregated period series (e.g. build_monthly_series's
-    output) as a line chart, preserving its index order exactly."""
-    fig = go.Figure(
-        data=[
+    output) as a line chart, preserving its index order exactly.
+
+    If `anomalies` (the existing output of detect_iqr_anomalies) is given and
+    contains any records, one extra marker-only trace is added on top of the
+    line, plotting each anomaly's own "period"/"value" verbatim (never
+    re-indexing monthly_series by period), colored solely by "direction".
+    """
+    data = [
+        go.Scatter(
+            x=list(monthly_series.index),
+            y=list(monthly_series.to_numpy()),
+            mode="lines+markers",
+        )
+    ]
+
+    anomaly_records = (anomalies or {}).get("anomalies") or []
+    if anomaly_records:
+        data.append(
             go.Scatter(
-                x=list(monthly_series.index),
-                y=list(monthly_series.to_numpy()),
-                mode="lines+markers",
+                x=[record["period"] for record in anomaly_records],
+                y=[record["value"] for record in anomaly_records],
+                mode="markers",
+                marker={"color": [ANOMALY_DIRECTION_COLORS[record["direction"]] for record in anomaly_records]},
             )
-        ]
-    )
+        )
+
+    fig = go.Figure(data=data)
     fig.update_layout(
         title=title or DEFAULT_TREND_CHART_TITLE,
         xaxis_title="Period",

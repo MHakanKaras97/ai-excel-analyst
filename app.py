@@ -207,7 +207,7 @@ def main():
             anomalies = detect_iqr_anomalies(series)
             st.write(f"Trend: {trend['trend']}")
             st.plotly_chart(
-                build_trend_chart(series),
+                build_trend_chart(series, anomalies=anomalies),
                 use_container_width=True,
             )
             if period_comparison["comparisons"]:
