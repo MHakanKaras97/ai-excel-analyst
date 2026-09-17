@@ -268,7 +268,7 @@ def _dispatch_period_extremum(intent: dict, analysis_payload: dict, monthly_seri
 
     period = monthly_series.idxmin() if metric == "min" else monthly_series.idxmax()
     value = monthly_series.loc[period]
-    return _grounded_result(True, None, "period_extremum", column=column, period=period, value=value)
+    return _grounded_result(True, None, "period_extremum", column=column, period=period, value=value, extra={"metric": metric})
 
 
 def _dispatch_period_change(intent: dict, analysis_payload: dict, monthly_series) -> dict:
@@ -336,7 +336,7 @@ def _dispatch_column_stat(intent: dict, analysis_payload: dict, monthly_series) 
     if column_stats is None:
         return _grounded_result(False, "column_not_found", "column_stat")
 
-    return _grounded_result(True, None, "column_stat", column=column, value=column_stats.get(metric))
+    return _grounded_result(True, None, "column_stat", column=column, value=column_stats.get(metric), extra={"metric": metric})
 
 
 def _dispatch_anomaly_check(intent: dict, analysis_payload: dict, monthly_series) -> dict:

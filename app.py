@@ -19,6 +19,9 @@ from src.data_normalizer import normalize_dataframe
 from src.data_profiler import profile_dataframe
 from src.excel_loader import load_excel
 from src.gemini_provider import GeminiProvider
+from src.qa_answer import answer_grounded_result
+from src.qa_engine import dispatch_intent
+from src.qa_interpreter import interpret_question
 
 AI_ERROR_MESSAGES = {
     "missing_api_key": "GEMINI_API_KEY is not set. Add it to your environment to enable AI insights.",
@@ -117,6 +120,16 @@ def ai_error_message(reason: str) -> str:
     return AI_ERROR_MESSAGES.get(reason, "AI insight generation failed.")
 
 
+def build_qa_analysis_payload(numeric_summary: dict, profile: dict, period_comparison: dict | None = None,
+                               anomalies: dict | None = None) -> dict:
+    payload = {"numeric_summary": numeric_summary, "profile": profile}
+    if period_comparison is not None:
+        payload["period_comparison"] = period_comparison
+    if anomalies is not None:
+        payload["anomalies"] = anomalies
+    return payload
+
+
 def main():
     st.title("AI Excel Analyst")
     st.write(
@@ -179,6 +192,7 @@ def main():
     trend = None
     period_comparison = None
     anomalies = None
+    monthly_series = None
     value_options = numeric_column_names(normalized_df)
     period_options = date_like_column_names(profile)
 
@@ -202,6 +216,7 @@ def main():
         except ValueError as exc:
             st.error(f"Could not aggregate the selected period column: {exc}")
         else:
+            monthly_series = series
             trend = detect_trend(series)
             period_comparison = compare_periods(series)
             anomalies = detect_iqr_anomalies(series)
@@ -254,6 +269,30 @@ def main():
                         st.write(f"- {item}")
             else:
                 st.error(ai_error_message(result["reason"]))
+
+    st.subheader("Ask a Question")
+    st.caption(
+        "The AI only classifies your question and extracts hints from it; the "
+        "answer itself is looked up and computed deterministically from the "
+        "analytics above — the AI never generates the numeric answer."
+    )
+    question = st.text_input("Ask a question about this dataset", key="qa_question")
+    if st.button("Get Answer", key="qa_get_answer"):
+        if not question.strip():
+            st.session_state["qa_answer"] = None
+        else:
+            provider = GeminiProvider()
+            column_names = [c["name"] for c in profile["columns"]]
+            interpretation = interpret_question(question, column_names, provider)
+            if interpretation["is_valid"]:
+                qa_payload = build_qa_analysis_payload(numeric_summary, profile, period_comparison, anomalies)
+                grounded_result = dispatch_intent(interpretation["intent"], qa_payload, monthly_series)
+                st.session_state["qa_answer"] = answer_grounded_result(grounded_result)
+            else:
+                st.session_state["qa_answer"] = answer_grounded_result(interpretation)
+
+    if st.session_state.get("qa_answer"):
+        st.write(st.session_state["qa_answer"])
 
 
 if __name__ == "__main__":

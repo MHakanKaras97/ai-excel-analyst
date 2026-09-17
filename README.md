@@ -4,7 +4,7 @@ An AI-powered Excel analytics and executive reporting application.
 
 ## Project Status
 
-🚧 In development — V0.1 through V0.4 are complete; V0.5 (Q&A) is in progress.
+🚧 In development — V0.1 through V0.5 (Q&A) are complete.
 
 ## Goal
 
@@ -51,7 +51,7 @@ Charts / Q&A / Insights
 Multi-file / Report / PPT
 ```
 
-### Q&A Architecture (V0.5)
+### Q&A Architecture (V0.5 — complete)
 
 ```
 User Question
@@ -65,12 +65,13 @@ Deterministic Q&A Engine
 Grounded Result
  ↓
 Deterministic Answer
+ ↓
+Streamlit
 ```
 
-**Architectural principle:** the LLM interprets the user's question and extracts a
-structured intent — nothing more. All data lookup, ambiguity resolution, analytics,
-anomaly lookup, and final answer generation are deterministic Python operations.
-The LLM does not generate numeric answers.
+**Architectural principle:** the LLM interprets the question. Python resolves,
+calculates/looks up, grounds, and answers. The LLM does not generate numeric
+answers.
 
 ### V0.5 Q&A Progress
 
@@ -78,11 +79,11 @@ The LLM does not generate numeric answers.
 - [x] Structured intent interpreter (`src/qa_interpreter.py`)
 - [x] Deterministic column resolution (`src/qa_engine.py`)
 - [x] Deterministic period resolution (`src/qa_engine.py`)
-- [ ] Intent dispatch
-- [ ] Grounded result generation
-- [ ] Deterministic answer templates
-- [ ] End-to-end integration test
-- [ ] Streamlit Q&A integration
+- [x] Intent dispatch (`src/qa_engine.py`)
+- [x] Grounded result generation (`src/qa_engine.py`)
+- [x] Deterministic answer templates (`src/qa_answer.py`)
+- [x] End-to-end integration test (`tests/test_qa_pipeline.py`)
+- [x] Streamlit Q&A integration (`app.py`)
 
 ### Supported Q&A Intents
 
@@ -118,7 +119,7 @@ dataset is entirely deterministic (`src/qa_engine.py`):
 
 ## Testing
 
-Full test suite: **277 passed, 1 deselected** (a `pytest.ini` marker excludes
+Full test suite: **340 passed, 1 deselected** (a `pytest.ini` marker excludes
 the network-dependent Gemini integration test by default).
 
 Focused Q&A test suites:
@@ -127,7 +128,10 @@ Focused Q&A test suites:
 |---|---|
 | V0.5.1 `qa_prompt_builder` | 13 passed |
 | V0.5.2 `qa_interpreter` | 16 passed |
-| V0.5.3a `qa_engine` | 20 passed |
+| V0.5.3a + V0.5.3b `qa_engine` | 47 passed |
+| V0.5.4 `qa_answer` | 22 passed |
+| V0.5.5 end-to-end pipeline | 8 passed |
+| V0.5.6 Streamlit Q&A (AppTest) | 6 passed |
 
 Run the full suite from the repo root with `pytest`.
 
@@ -152,7 +156,7 @@ Coming soon.
 | V0.2 | Data Understanding / Profiling | COMPLETE |
 | V0.3 | Automatic Visualization Engine | COMPLETE |
 | V0.4 | Anomaly Detection | COMPLETE |
-| V0.5 | Q&A | IN PROGRESS |
+| V0.5 | Q&A | COMPLETE |
 | V0.6 | Q&A-driven Dynamic Charts | PLANNED |
 | V0.7 | Multi-file Comparison | PLANNED |
 | V0.8 | PowerPoint Generator | PLANNED |
