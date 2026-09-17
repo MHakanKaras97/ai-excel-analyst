@@ -15,11 +15,14 @@ from src.chart_builder import (
     build_period_change_chart,
     build_trend_chart,
 )
+from src.chart_intent_interpreter import interpret_chart_question
 from src.data_normalizer import normalize_dataframe
 from src.data_profiler import profile_dataframe
 from src.excel_loader import load_excel
 from src.gemini_provider import GeminiProvider
 from src.qa_answer import answer_grounded_result
+from src.qa_chart_engine import build_chart_spec
+from src.qa_chart_renderer import render_chart_spec
 from src.qa_engine import dispatch_intent
 from src.qa_interpreter import interpret_question
 
@@ -118,6 +121,29 @@ def build_analytics_payload(numeric_summary: dict, date_summary: dict, trend: di
 
 def ai_error_message(reason: str) -> str:
     return AI_ERROR_MESSAGES.get(reason, "AI insight generation failed.")
+
+
+CHART_ERROR_MESSAGES = {
+    "invalid_json": "Could not understand the chart request.",
+    "invalid_schema": "Could not understand the chart request.",
+    "missing_api_key": "GEMINI_API_KEY is not set. Add it to your environment to enable chart requests.",
+    "provider_unavailable": "The Gemini SDK is not available in this environment.",
+    "provider_error": "The Gemini API request failed. Please try again.",
+    "column_not_found": "The requested column was not found.",
+    "ambiguous_column": "The requested column reference is ambiguous. Please be more specific.",
+    "column_required": "Please specify which column to chart.",
+    "column_series_mismatch": "The requested column does not match the currently selected trend series.",
+    "period_not_found": "The requested period was not found.",
+    "ambiguous_period": "The requested period reference is ambiguous. Please be more specific.",
+    "period_range_incomplete": "Please specify both a starting and an ending period.",
+    "period_change_not_found": "No change was found between the requested periods.",
+    "unsupported_metric": "That statistic isn't supported for charting.",
+    "unsupported": "That chart request isn't supported yet.",
+}
+
+
+def chart_error_message(reason: str) -> str:
+    return CHART_ERROR_MESSAGES.get(reason, "The requested chart cannot be generated from the available analysis.")
 
 
 def build_qa_analysis_payload(numeric_summary: dict, profile: dict, period_comparison: dict | None = None,
@@ -293,6 +319,37 @@ def main():
 
     if st.session_state.get("qa_answer"):
         st.write(st.session_state["qa_answer"])
+
+    st.subheader("Ask for a Chart")
+    st.caption(
+        "The AI only classifies your chart request; the chart itself is always "
+        "built from the deterministic analytics above — the AI never generates "
+        "chart data or Plotly code."
+    )
+    chart_question = st.text_input("Describe the chart you want", key="chart_question")
+    if st.button("Show Chart", key="chart_show_chart"):
+        if not chart_question.strip():
+            st.session_state["chart_spec"] = None
+        else:
+            provider = GeminiProvider()
+            column_names = [c["name"] for c in profile["columns"]]
+            chart_interpretation = interpret_chart_question(chart_question, column_names, provider)
+            if chart_interpretation["is_valid"]:
+                chart_payload = build_qa_analysis_payload(numeric_summary, profile, period_comparison, anomalies)
+                st.session_state["chart_spec"] = build_chart_spec(
+                    chart_interpretation["intent"], chart_payload, monthly_series, anomalies,
+                )
+            else:
+                st.session_state["chart_spec"] = {"found": False, "reason": chart_interpretation["reason"]}
+
+    chart_spec = st.session_state.get("chart_spec")
+    if chart_spec is not None:
+        if chart_spec["found"]:
+            figure = render_chart_spec(chart_spec)
+            if figure is not None:
+                st.plotly_chart(figure, use_container_width=True, key="chart_question_result")
+        else:
+            st.error(chart_error_message(chart_spec["reason"]))
 
 
 if __name__ == "__main__":
