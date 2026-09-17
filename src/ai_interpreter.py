@@ -1,5 +1,6 @@
 import json
 import re
+from typing import Callable
 
 from src.ai_prompt_builder import build_prompt
 from src.ai_provider import AIProvider, AIProviderError
@@ -68,7 +69,45 @@ def _collect_payload_numbers(value) -> set:
     return numbers
 
 
-def _extract_numbers_from_text(text: str) -> set:
+def _collect_payload_labels(value) -> set:
+    """Collect string leaf values from the payload that mix letters and
+    digits (e.g. "Budget_2024", "Revenue2024") — deterministic labels whose
+    embedded digits are clearly part of the label's identity, not a
+    standalone numeric claim. Purely numeric strings (e.g. a "2024-03"
+    period label) are excluded here since they're already handled by
+    DATE_LABEL_PATTERN, and treating a bare number as a maskable "label"
+    would let it swallow a genuinely different numeric claim that happens
+    to reuse the same digits.
+    """
+    labels = set()
+    if isinstance(value, dict):
+        for item in value.values():
+            labels |= _collect_payload_labels(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            labels |= _collect_payload_labels(item)
+    elif isinstance(value, str):
+        if any(ch.isdigit() for ch in value) and any(ch.isalpha() for ch in value):
+            labels.add(value)
+    return labels
+
+
+def _mask_known_labels(text: str, known_labels: set) -> str:
+    """Remove verbatim occurrences of known digit-bearing payload labels
+    from `text` before number extraction, so a response merely echoing a
+    supplied label (e.g. "Budget_2024") doesn't have its embedded digits
+    mistaken for a standalone numeric claim. Only exact, literal
+    occurrences of a known label are masked — any other digit sequence
+    (including the same digits appearing outside that exact label) is left
+    for normal number extraction and must still be a supported fact.
+    """
+    for label in sorted(known_labels, key=len, reverse=True):
+        text = text.replace(label, " ")
+    return text
+
+
+def _extract_numbers_from_text(text: str, known_labels: set = frozenset()) -> set:
+    text = _mask_known_labels(text, known_labels)
     text = DATE_LABEL_PATTERN.sub(" ", text)
     numbers = set()
     for match in NUMBER_PATTERN.finditer(text):
@@ -102,13 +141,15 @@ def _number_is_supported(number: float, payload_numbers: set) -> bool:
 
 def _has_hallucinated_numbers(parsed: dict, analytics_payload: dict) -> bool:
     payload_numbers = _collect_payload_numbers(analytics_payload)
-    response_numbers = _extract_numbers_from_text(_response_text(parsed))
+    payload_labels = _collect_payload_labels(analytics_payload)
+    response_numbers = _extract_numbers_from_text(_response_text(parsed), payload_labels)
 
     return any(not _number_is_supported(number, payload_numbers) for number in response_numbers)
 
 
-def interpret(analytics_payload: dict, provider: AIProvider) -> dict:
-    prompt = build_prompt(analytics_payload)
+def interpret(analytics_payload: dict, provider: AIProvider,
+               prompt_builder: Callable[[dict], str] = build_prompt) -> dict:
+    prompt = prompt_builder(analytics_payload)
 
     try:
         response_text = provider.generate(prompt)
