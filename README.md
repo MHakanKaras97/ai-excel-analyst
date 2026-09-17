@@ -4,7 +4,7 @@ An AI-powered Excel analytics and executive reporting application.
 
 ## Project Status
 
-🚧 In development
+🚧 In development — V0.1 through V0.4 are complete; V0.5 (Q&A) is in progress.
 
 ## Goal
 
@@ -16,6 +16,7 @@ The goal of this project is to build an application that can:
 - Detect trends and anomalies
 - Generate data visualizations
 - Use an LLM to interpret analytical results
+- Answer natural-language questions about the data, grounded in deterministic results
 - Generate executive summaries
 - Generate PowerPoint reports
 
@@ -34,11 +35,110 @@ The goal of this project is to build an application that can:
 
 ## Architecture
 
-Coming soon.
+High-level pipeline:
+
+```
+Excel
+ ↓
+Data Understanding + Normalization
+ ↓
+Deterministic Analytics + Anomaly Detection
+ ↓
+AI Analyst Core
+ ↓
+Charts / Q&A / Insights
+ ↓
+Multi-file / Report / PPT
+```
+
+### Q&A Architecture (V0.5)
+
+```
+User Question
+ ↓
+Q&A Interpreter (ONE LLM call)
+ ↓
+Structured Intent
+ ↓
+Deterministic Q&A Engine
+ ↓
+Grounded Result
+ ↓
+Deterministic Answer
+```
+
+**Architectural principle:** the LLM interprets the user's question and extracts a
+structured intent — nothing more. All data lookup, ambiguity resolution, analytics,
+anomaly lookup, and final answer generation are deterministic Python operations.
+The LLM does not generate numeric answers.
+
+### V0.5 Q&A Progress
+
+- [x] Prompt builder (`src/qa_prompt_builder.py`)
+- [x] Structured intent interpreter (`src/qa_interpreter.py`)
+- [x] Deterministic column resolution (`src/qa_engine.py`)
+- [x] Deterministic period resolution (`src/qa_engine.py`)
+- [ ] Intent dispatch
+- [ ] Grounded result generation
+- [ ] Deterministic answer templates
+- [ ] End-to-end integration test
+- [ ] Streamlit Q&A integration
+
+### Supported Q&A Intents
+
+The Q&A interpreter classifies each question into exactly one of:
+
+- `period_value`
+- `period_extremum`
+- `period_change`
+- `column_stat`
+- `anomaly_check`
+- `missing_values`
+- `unsupported`
+
+The interpreter makes exactly one LLM call per question and returns only a
+structured intent (intent, metric, and free-text hints) — it does not answer
+the question or compute any value itself.
+
+### Deterministic Resolution
+
+Once the LLM returns a structured intent, hint resolution against the actual
+dataset is entirely deterministic (`src/qa_engine.py`):
+
+- Case-insensitive exact column matching
+- Conservative fuzzy column matching using Python's stdlib `difflib` (no
+  external fuzzy-matching dependency)
+- Explicit `ambiguous_column` handling — multiple plausible matches are
+  surfaced, never silently guessed
+- Exact period matching (`YYYY-MM`)
+- Month/year normalization (e.g. "March 2024", "Mar 2024", "03 2024")
+- Explicit `ambiguous_period` handling — a bare month matching multiple years
+  is surfaced, never defaulted to the latest or first match
+- No silent guessing at any resolution step
 
 ## Testing
 
-Coming soon.
+Full test suite: **277 passed, 1 deselected** (a `pytest.ini` marker excludes
+the network-dependent Gemini integration test by default).
+
+Focused Q&A test suites:
+
+| Module | Tests |
+|---|---|
+| V0.5.1 `qa_prompt_builder` | 13 passed |
+| V0.5.2 `qa_interpreter` | 16 passed |
+| V0.5.3a `qa_engine` | 20 passed |
+
+Run the full suite from the repo root with `pytest`.
+
+## Principles
+
+- Deterministic calculations are performed by Python, not the LLM
+- The LLM is used for interpretation, not calculation
+- Ambiguity is surfaced rather than silently guessed
+- Existing working modules are reused rather than unnecessarily refactored
+- Provider abstraction (`AIProvider`) keeps the AI layer replaceable
+- Tests are provider/network independent wherever possible
 
 ## Limitations
 
@@ -46,15 +146,14 @@ Coming soon.
 
 ## Development Roadmap
 
-- [x] Development environment
-- [x] Virtual environment
-- [x] Initial dependencies
-- [x] Git repository
-- [ ] Excel file ingestion
-- [ ] Data validation
-- [ ] Analytics engine
-- [ ] AI analysis
-- [ ] Streamlit interface
-- [ ] PowerPoint generation
-- [ ] Automated testing
-- [ ] Final portfolio version
+| Version | Milestone | Status |
+|---|---|---|
+| V0.1 | Excel Loading | COMPLETE |
+| V0.2 | Data Understanding / Profiling | COMPLETE |
+| V0.3 | Automatic Visualization Engine | COMPLETE |
+| V0.4 | Anomaly Detection | COMPLETE |
+| V0.5 | Q&A | IN PROGRESS |
+| V0.6 | Q&A-driven Dynamic Charts | PLANNED |
+| V0.7 | Multi-file Comparison | PLANNED |
+| V0.8 | PowerPoint Generator | PLANNED |
+| V1.0 | Integration / Polish | PLANNED |
