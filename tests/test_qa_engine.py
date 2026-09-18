@@ -3,7 +3,7 @@ import json
 
 import pandas as pd
 
-from src.qa_engine import dispatch_intent, resolve_column, resolve_period
+from src.qa_engine import dispatch_intent, resolve_column, resolve_period, resolve_year
 
 # ==================================================
 # COLUMN RESOLUTION
@@ -168,6 +168,63 @@ def test_resolve_period_does_not_mutate_input_list():
 
 def test_resolve_period_empty_period_list():
     result = resolve_period("March", [])
+
+    assert result == {"found": False, "reason": "period_not_found", "period": None, "candidates": []}
+
+
+# ==================================================
+# YEAR RESOLUTION
+# ==================================================
+
+
+def test_resolve_year_existing_year_returns_all_its_periods():
+    labels = ["2023-11", "2023-12", "2024-01", "2024-02", "2024-03"]
+
+    result = resolve_year("2024", labels)
+
+    assert result == {"found": True, "reason": None, "periods": ["2024-01", "2024-02", "2024-03"]}
+
+
+def test_resolve_year_nonexistent_year_is_not_found():
+    labels = ["2023-11", "2023-12", "2024-01"]
+
+    result = resolve_year("2025", labels)
+
+    assert result == {"found": False, "reason": "period_not_found", "periods": []}
+
+
+def test_resolve_year_multi_year_dataset_only_returns_matching_year():
+    labels = ["2022-06", "2023-01", "2023-02", "2024-01", "2024-12"]
+
+    result = resolve_year("2023", labels)
+
+    assert result["found"] is True
+    assert result["periods"] == ["2023-01", "2023-02"]
+
+
+def test_resolve_year_rejects_non_year_shaped_hints_without_guessing():
+    labels = ["2024-01", "2024-02"]
+
+    for hint in ["March", "March 2024", "2024-03", "20245", "", None]:
+        result = resolve_year(hint, labels)
+        assert result["found"] is False
+        assert result["reason"] == "not_a_year"
+        assert result["periods"] == []
+
+
+def test_resolve_year_does_not_mutate_input_list():
+    labels = ["2024-01", "2024-02"]
+    before = list(labels)
+
+    resolve_year("2024", labels)
+
+    assert labels == before
+
+
+def test_resolve_year_does_not_change_resolve_period_behavior():
+    # resolve_period must still reject a bare year exactly as before —
+    # resolve_year is an additive, separate primitive.
+    result = resolve_period("2024", ["2024-01", "2024-02"])
 
     assert result == {"found": False, "reason": "period_not_found", "period": None, "candidates": []}
 
@@ -558,6 +615,94 @@ def test_dispatch_column_stat_column_not_found():
     assert result["found"] is False
     assert result["reason"] == "column_not_found"
     assert result["value"] is None
+
+
+def _multi_year_monthly_series():
+    # 2023 data must NOT leak into a "2024" request. Deliberately chosen so
+    # the 2024-only sum (600.0) differs from _numeric_summary()'s
+    # full-dataset "sum" (450.0) — a test that coincidentally produced the
+    # same number either way wouldn't actually prove filtering happened.
+    return pd.Series(
+        [10.0, 20.0, 100.0, 200.0, 300.0],
+        index=["2023-11", "2023-12", "2024-01", "2024-02", "2024-03"],
+        name="TotalPrice",
+    )
+
+
+def test_dispatch_column_stat_sum_restricted_to_year():
+    result = dispatch_intent(
+        _intent("column_stat", metric="sum", column_hint="TotalPrice", period_hint="2024"),
+        _payload(),
+        _multi_year_monthly_series(),
+    )
+
+    assert result["found"] is True
+    assert result["reason"] is None
+    assert result["column"] == "TotalPrice"
+    assert result["value"] == 600.0  # 100 + 200 + 300 (2024 only, excludes the 2023 rows)
+
+
+def test_dispatch_column_stat_year_restricted_mean_is_explicitly_unsupported():
+    # mean/median/min/max/count over *monthly sums* would silently answer a
+    # different question than the row-level statistic the unfiltered
+    # column_stat answers — must be reported unsupported, never guessed.
+    result = dispatch_intent(
+        _intent("column_stat", metric="mean", column_hint="TotalPrice", period_hint="2024"),
+        _payload(),
+        _multi_year_monthly_series(),
+    )
+
+    assert result["found"] is False
+    assert result["reason"] == "unsupported"
+
+
+def test_dispatch_column_stat_nonexistent_year_is_not_found():
+    result = dispatch_intent(
+        _intent("column_stat", metric="sum", column_hint="TotalPrice", period_hint="2099"),
+        _payload(),
+        _multi_year_monthly_series(),
+    )
+
+    assert result["found"] is False
+    assert result["reason"] == "period_not_found"
+    assert result["value"] is None
+
+
+def test_dispatch_column_stat_year_hint_without_trend_computed_is_trend_not_computed():
+    result = dispatch_intent(
+        _intent("column_stat", metric="sum", column_hint="TotalPrice", period_hint="2024"),
+        _payload(),
+        None,
+    )
+
+    assert result["found"] is False
+    assert result["reason"] == "trend_not_computed"
+
+
+def test_dispatch_column_stat_non_year_period_hint_falls_back_to_full_dataset():
+    # "March" is not a bare year — the year-filtering branch must not
+    # engage, so existing (unfiltered) column_stat behavior is preserved.
+    result = dispatch_intent(
+        _intent("column_stat", metric="sum", column_hint="TotalPrice", period_hint="March"),
+        _payload(),
+        _multi_year_monthly_series(),
+    )
+
+    assert result["found"] is True
+    assert result["value"] == 450.0  # falls through to numeric_summary's full-dataset sum from _payload()
+
+
+def test_dispatch_column_stat_without_period_hint_is_unchanged():
+    # Explicit regression guard: no period_hint must behave exactly as
+    # before this change, regardless of whether monthly_series is given.
+    result = dispatch_intent(
+        _intent("column_stat", metric="sum", column_hint="TotalPrice"),
+        _payload(),
+        _multi_year_monthly_series(),
+    )
+
+    assert result["found"] is True
+    assert result["value"] == 450.0  # from _numeric_summary()'s precomputed full-dataset "sum", unaffected
 
 
 # --- anomaly_check ---

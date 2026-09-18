@@ -170,6 +170,40 @@ def test_full_successful_missing_values_pipeline():
     assert provider.call_count == 1
 
 
+def _quantity_monthly_series():
+    return pd.Series(
+        [500.0, 600.0, 700.0, 800.0, 900.0, 6260.0, 800.0, 400.0, 560.0],
+        index=["2023-06", "2023-12", "2024-01", "2024-02", "2024-03",
+               "2024-04", "2024-05", "2025-01", "2025-06"],
+        name="Quantity",
+    )
+
+
+def test_full_reported_bug_trend_chart_restricted_to_year():
+    # Exact reported request: "Show monthly quantity trend for 2024"
+    # previously plotted the full range (~Jan 2023 -> Jul 2025) instead of
+    # only the 2024 periods.
+    provider = FakeProvider(response=_intent_response(
+        intent="trend_chart", column_hint="Quantity", period_hint="2024",
+    ))
+
+    figure = _run_chart_pipeline(
+        "Show monthly quantity trend for 2024", ["Quantity"], provider,
+        _analysis_payload(numeric_summary={"columns": [
+            {"name": "Quantity", "count": 9, "missing_count": 0, "sum": 11520.0,
+             "mean": 1280.0, "median": 700.0, "min": 400.0, "max": 6260.0, "std": 1856.0},
+        ]}),
+        _quantity_monthly_series(),
+    )
+
+    assert isinstance(figure, go.Figure)
+    assert list(figure.data[0].x) == ["2024-01", "2024-02", "2024-03", "2024-04", "2024-05"]
+    assert list(figure.data[0].y) == [700.0, 800.0, 900.0, 6260.0, 800.0]
+    # Neither the 2023 nor 2025 data must appear on the chart.
+    assert "2023-06" not in figure.data[0].x
+    assert "2025-01" not in figure.data[0].x
+
+
 # ==================================================
 # INTERPRETER FAILURES
 # ==================================================

@@ -27,6 +27,7 @@ MONTH_NAMES = {
 }
 
 PERIOD_LABEL_PATTERN = re.compile(r"^\d{4}-\d{2}$")
+YEAR_HINT_PATTERN = re.compile(r"^\d{4}$")
 
 
 def _column_result(found: bool, reason, column=None, candidates=None) -> dict:
@@ -157,12 +158,60 @@ def resolve_period(period_hint: str, period_labels: list[str]) -> dict:
     return _period_result(False, "period_not_found")
 
 
+def _year_result(found: bool, reason, periods=None) -> dict:
+    return {
+        "found": found,
+        "reason": reason,
+        "periods": periods or [],
+    }
+
+
+def resolve_year(year_hint: str, period_labels: list[str]) -> dict:
+    """Resolve a free-text hint against known "YYYY-MM" period labels ONLY
+    when it is a bare four-digit calendar year (e.g. "2024"), returning
+    every known period label that falls within that year.
+
+    This is a narrow, separate primitive from resolve_period() — it never
+    changes resolve_period()'s own single-period resolution, and it never
+    attempts any other hint shape (a month name, a "Month Year" pair, an
+    exact "YYYY-MM" label): those remain resolve_period()'s job entirely.
+
+    reason == "not_a_year" means the hint isn't a bare four-digit year at
+    all — callers should treat this the same as "no year was requested"
+    (fall back to existing unfiltered behavior), not as a resolution
+    failure. reason == "period_not_found" means the hint IS a year-shaped
+    request but no known period falls within it — never silently defaulted
+    to using all data.
+    """
+    if not year_hint or not year_hint.strip():
+        return _year_result(False, "not_a_year")
+
+    hint = year_hint.strip()
+    if not YEAR_HINT_PATTERN.match(hint):
+        return _year_result(False, "not_a_year")
+
+    matches = sorted(label for label in period_labels if PERIOD_LABEL_PATTERN.match(label) and label[:4] == hint)
+    if matches:
+        return _year_result(True, None, periods=matches)
+    return _year_result(False, "period_not_found")
+
+
 # ==================================================
 # INTENT DISPATCH (V0.5.3b)
 # ==================================================
 
 COLUMN_STAT_METRICS = {"sum", "mean", "median", "min", "max", "count"}
 PERIOD_EXTREMUM_METRICS = {"min", "max"}
+
+# Metrics that can be correctly restricted to a calendar year using only
+# `monthly_series` (already-aggregated monthly sums). `sum` is the only one:
+# a sum of that year's monthly sums equals the sum of that year's rows.
+# mean/median/min/max/count over monthly *sums* would silently answer a
+# different question than the equivalent row-level statistic (see
+# _dispatch_column_stat) — the architecture has no row-level data available
+# here to compute those correctly for a year restriction, so they are
+# reported as unsupported for a year-restricted request rather than guessed.
+YEAR_FILTERABLE_COLUMN_STAT_METRICS = {"sum"}
 
 
 def _json_safe(value):
@@ -323,10 +372,40 @@ def _dispatch_period_change(intent: dict, analysis_payload: dict, monthly_series
     return _grounded_result(True, None, "period_change", column=column, value=comparison.get("absolute_change"), extra=extra)
 
 
+def _dispatch_column_stat_for_year(intent: dict, analysis_payload: dict, monthly_series, metric: str, year_periods: list) -> dict:
+    """Handle a column_stat request whose period_hint resolved to a
+    calendar year. Column resolution is delegated to resolve_trend_column()
+    (the same rule period_value/period_extremum/period_change/
+    anomaly_check already use) because, unlike the unfiltered case, the
+    answer must come from `monthly_series` — the one column that series
+    was actually built from — not from whichever numeric column merely
+    matches the hint by name. Callers must already have confirmed
+    `monthly_series` is present and non-empty.
+    """
+    if metric not in YEAR_FILTERABLE_COLUMN_STAT_METRICS:
+        return _grounded_result(False, "unsupported", "column_stat", extra={"metric": metric})
+
+    ok, column, reason, candidates = resolve_trend_column(intent.get("column_hint"), analysis_payload, monthly_series)
+    if not ok:
+        return _grounded_result(False, reason, "column_stat", extra={"candidates": candidates} if candidates else None)
+
+    value = monthly_series.loc[year_periods].sum()
+    return _grounded_result(True, None, "column_stat", column=column, value=value, extra={"metric": metric})
+
+
 def _dispatch_column_stat(intent: dict, analysis_payload: dict, monthly_series) -> dict:
     metric = intent.get("metric")
     if metric not in COLUMN_STAT_METRICS:
         return _grounded_result(False, "unsupported", "column_stat")
+
+    period_hint = intent.get("period_hint")
+    if period_hint and YEAR_HINT_PATTERN.match(period_hint.strip()):
+        if monthly_series is None or len(monthly_series) == 0:
+            return _grounded_result(False, "trend_not_computed", "column_stat")
+        year_result = resolve_year(period_hint, list(monthly_series.index))
+        if not year_result["found"]:
+            return _grounded_result(False, "period_not_found", "column_stat")
+        return _dispatch_column_stat_for_year(intent, analysis_payload, monthly_series, metric, year_result["periods"])
 
     column_names = [c["name"] for c in _numeric_summary_columns(analysis_payload)]
     result = resolve_column(intent.get("column_hint"), column_names)

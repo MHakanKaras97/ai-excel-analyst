@@ -206,6 +206,52 @@ def test_pipeline_engine_failure_produces_deterministic_answer_without_second_ll
     assert answer == "I couldn't find a period matching that question."
 
 
+# --- Reported bug regression: column_stat restricted to a calendar year --
+
+
+def _quantity_monthly_series():
+    # Spans 2023-2025 so a "2024" restriction has real other-year data to
+    # incorrectly include if the year filter were ever lost again.
+    return pd.Series(
+        [500.0, 600.0, 700.0, 800.0, 900.0, 6260.0, 800.0, 400.0, 560.0],
+        index=["2023-06", "2023-12", "2024-01", "2024-02", "2024-03",
+               "2024-04", "2024-05", "2025-01", "2025-06"],
+        name="Quantity",
+    )
+
+
+def _quantity_analysis_payload():
+    return {"numeric_summary": {"columns": [
+        {"name": "Quantity", "count": 9, "missing_count": 0, "sum": 11520.0,
+         "mean": 1280.0, "median": 700.0, "min": 400.0, "max": 6260.0, "std": 1856.0},
+    ]}}
+
+
+def test_pipeline_reported_bug_total_quantity_in_2024_is_year_restricted():
+    # Exact reported request: "What was the total quantity purchased in
+    # 2024?" previously answered with the whole-dataset sum (8260.0-style
+    # figure) instead of only 2024's rows.
+    intent_response = json.dumps({
+        "intent": "column_stat", "metric": "sum", "column_hint": "Quantity",
+        "period_hint": "2024", "from_period_hint": None, "to_period_hint": None,
+    })
+    provider = FakeProvider(response=intent_response)
+
+    answer = _run_pipeline(
+        "What was the total quantity purchased in 2024?",
+        ["Quantity"],
+        provider,
+        _quantity_analysis_payload(),
+        _quantity_monthly_series(),
+    )
+
+    assert provider.call_count == 1
+    # 700 + 800 + 900 + 6260 + 800 (2024-01..2024-05 only)
+    assert answer == "The sum of Quantity is 9460.0."
+    # The full-dataset sum (11520.0) must never appear in a year-restricted answer.
+    assert "11520" not in answer
+
+
 # --- Cross-cutting guarantees -----------------------------------------
 
 

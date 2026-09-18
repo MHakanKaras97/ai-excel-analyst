@@ -32,7 +32,7 @@ Supported intents:
 
 Hint extraction rules:
 - column_hint: the column name or phrase the user appears to refer to, or null if there is no column reference. Do not decide which actual dataset column it maps to.
-- period_hint: the requested period phrase as written/understood (e.g. "March", "March 2024", "2024-03"). Do not resolve it to a specific period.
+- period_hint: the requested period phrase as written/understood (e.g. "March", "March 2024", "2024-03", or a bare calendar year like "2024"). Do not resolve it to a specific period or expand a year into a list of periods yourself — just extract the phrase as written.
 - from_period_hint / to_period_hint: the two requested periods for period_change, extracted as written. Do not resolve or compare them.
 - Use null for any hint that is not applicable or not present in the question. Do not hallucinate missing hints."""
 

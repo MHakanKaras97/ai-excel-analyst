@@ -11,7 +11,7 @@ import copy
 import pandas as pd
 
 from src.multi_file_comparison import dispatch_comparison_intent
-from src.qa_engine import resolve_column, resolve_period
+from src.qa_engine import resolve_column, resolve_period, resolve_year
 
 NUMERIC_SUMMARY_METRICS = {"sum", "mean", "median", "min", "max", "std", "count"}
 DEFAULT_NUMERIC_SUMMARY_METRIC = "sum"
@@ -95,9 +95,18 @@ def _dispatch_trend_chart(intent: dict, analysis_payload: dict, monthly_series, 
     if not ok:
         return _failure(reason, "trend_chart", extra={"candidates": candidates} if candidates else None)
 
+    series = monthly_series
+    period_hint = intent.get("period_hint")
+    if period_hint:
+        year_result = resolve_year(period_hint, list(monthly_series.index))
+        if year_result["reason"] != "not_a_year":
+            if not year_result["found"]:
+                return _failure("period_not_found", "trend_chart")
+            series = monthly_series.loc[year_result["periods"]]
+
     data = {
-        "periods": [_json_safe(label) for label in monthly_series.index],
-        "values": [_json_safe(value) for value in monthly_series.to_numpy()],
+        "periods": [_json_safe(label) for label in series.index],
+        "values": [_json_safe(value) for value in series.to_numpy()],
     }
     return _success("trend_chart", "trend", column=column, data=data, extra={"anomalies": anomalies})
 

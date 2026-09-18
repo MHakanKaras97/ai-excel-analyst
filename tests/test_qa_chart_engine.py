@@ -229,6 +229,52 @@ def test_trend_chart_anomalies_absent_is_none_not_recalculated():
     assert result["extra"]["anomalies"] is None
 
 
+def _multi_year_monthly_series():
+    return pd.Series(
+        [10.0, 20.0, 100.0, 200.0, 300.0],
+        index=["2023-11", "2023-12", "2024-01", "2024-02", "2024-03"],
+        name="TotalPrice",
+    )
+
+
+def test_trend_chart_restricted_to_year_excludes_other_years():
+    result = build_chart_spec(
+        _intent("trend_chart", period_hint="2024"), _payload(), _multi_year_monthly_series(),
+    )
+
+    assert result["found"] is True
+    assert result["data"]["periods"] == ["2024-01", "2024-02", "2024-03"]
+    assert result["data"]["values"] == [100.0, 200.0, 300.0]
+
+
+def test_trend_chart_nonexistent_year_is_not_found():
+    result = build_chart_spec(
+        _intent("trend_chart", period_hint="2099"), _payload(), _multi_year_monthly_series(),
+    )
+
+    assert result["found"] is False
+    assert result["reason"] == "period_not_found"
+
+
+def test_trend_chart_non_year_period_hint_is_unaffected():
+    # "March" is not a bare year — the year-filtering branch must not
+    # engage, preserving existing (full-series) trend_chart behavior.
+    result = build_chart_spec(
+        _intent("trend_chart", period_hint="March"), _payload(), _multi_year_monthly_series(),
+    )
+
+    assert result["found"] is True
+    assert result["data"]["periods"] == ["2023-11", "2023-12", "2024-01", "2024-02", "2024-03"]
+
+
+def test_trend_chart_without_period_hint_is_unchanged():
+    result = build_chart_spec(_intent("trend_chart"), _payload(), _multi_year_monthly_series())
+
+    assert result["found"] is True
+    assert result["data"]["periods"] == ["2023-11", "2023-12", "2024-01", "2024-02", "2024-03"]
+    assert result["data"]["values"] == [10.0, 20.0, 100.0, 200.0, 300.0]
+
+
 # ==================================================
 # NUMERIC SUMMARY CHART
 # ==================================================

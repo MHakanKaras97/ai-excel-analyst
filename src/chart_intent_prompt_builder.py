@@ -34,7 +34,7 @@ Supported intents:
 Hint extraction rules:
 - column_hint: the column name or phrase the user used, exactly/as closely as practical (e.g. "sales" stays "sales" — do not convert it into an actual dataset column name). Use null if no column is mentioned.
 - metric: only when the user explicitly names one — "average"/"mean" -> mean, "total"/"sum" -> sum, "median" -> median, "minimum" -> min, "maximum" -> max, "standard deviation" -> std, "count" -> count. Use null if no metric is explicitly requested — never infer one.
-- period_hint: an explicitly mentioned period phrase, preserved as written (e.g. "March"). Use null if no period is mentioned.
+- period_hint: an explicitly mentioned period phrase, preserved as written (e.g. "March", or a bare calendar year like "2024" when the user asks to restrict a trend chart to that year). Do not expand a year into a list of periods yourself — just extract the phrase as written. Use null if no period is mentioned.
 - from_period_hint / to_period_hint: the two periods of an explicitly requested range/change, preserved as written (e.g. "from January to March" -> from_period_hint "January", to_period_hint "March"). Do not convert to YYYY-MM and do not infer a year. Use null when not applicable."""
 
 OUTPUT_SCHEMA_DESCRIPTION = """{
