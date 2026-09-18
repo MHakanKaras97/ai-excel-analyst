@@ -4,7 +4,7 @@ import json
 import pandas as pd
 
 import src.qa_engine as qa_engine
-from src.qa_chart_engine import build_chart_spec
+from src.qa_chart_engine import build_chart_spec, build_multi_file_chart_spec
 
 
 def _intent(intent_name, column_hint=None, metric=None, period_hint=None,
@@ -598,3 +598,147 @@ def test_resolve_period_from_qa_engine_is_reused_not_duplicated(monkeypatch):
         ("2024-01", ["2024-01", "2024-02", "2024-03"]),
         ("2024-02", ["2024-01", "2024-02", "2024-03"]),
     ]
+
+
+# ==================================================
+# build_multi_file_chart_spec (V0.7.6)
+# ==================================================
+
+
+def _multi_file_data_files(sum_a=100.0, sum_b=130.0):
+    return {
+        "file-a": {
+            "file_id": "file-a", "filename": "jan.xlsx", "display_name": "January", "role": "previous",
+            "raw_df": None, "value_column": None, "period_column": None,
+            "analysis": {
+                "numeric_summary": {"columns": [{"name": "Revenue", "sum": sum_a, "count": 3}]},
+                "monthly_series": None, "trend": None, "period_comparison": None, "anomalies": None,
+            },
+        },
+        "file-b": {
+            "file_id": "file-b", "filename": "feb.xlsx", "display_name": "February", "role": "current",
+            "raw_df": None, "value_column": None, "period_column": None,
+            "analysis": {
+                "numeric_summary": {"columns": [{"name": "Revenue", "sum": sum_b, "count": 3}]},
+                "monthly_series": None, "trend": None, "period_comparison": None, "anomalies": None,
+            },
+        },
+    }
+
+
+def _multi_file_chart_intent(intent_name="file_comparison_chart", column_hint="Revenue", metric="sum"):
+    return {
+        "intent": intent_name, "column_hint": column_hint, "metric": metric,
+        "period_hint": None, "from_file_hint": "previous", "to_file_hint": "current",
+    }
+
+
+def test_build_multi_file_chart_spec_success_reuses_numeric_summary_chart_type():
+    spec = build_multi_file_chart_spec(_multi_file_chart_intent(), _multi_file_data_files())
+
+    assert spec["found"] is True
+    assert spec["chart_type"] == "numeric_summary"
+    assert spec["intent"] == "file_comparison_chart"
+    assert spec["column"] == "Revenue"
+    assert spec["metric"] == "sum"
+    assert spec["data"] == {"columns": [{"name": "January", "sum": 100.0}, {"name": "February", "sum": 130.0}]}
+
+
+def test_build_multi_file_chart_spec_renders_via_existing_chart_builder(monkeypatch):
+    import src.qa_chart_engine as module
+    calls = []
+    original = module.build_numeric_summary_chart if hasattr(module, "build_numeric_summary_chart") else None
+
+    from src.qa_chart_renderer import render_chart_spec
+    spec = build_multi_file_chart_spec(_multi_file_chart_intent(), _multi_file_data_files())
+    figure = render_chart_spec(spec)
+
+    assert figure is not None
+    assert list(figure.data[0].x) == ["January", "February"]
+    assert list(figure.data[0].y) == [100.0, 130.0]
+
+
+def test_build_multi_file_chart_spec_includes_file_identity_in_extra():
+    spec = build_multi_file_chart_spec(_multi_file_chart_intent(), _multi_file_data_files())
+
+    assert spec["extra"]["file_a"]["display_name"] == "January"
+    assert spec["extra"]["file_b"]["display_name"] == "February"
+
+
+def test_build_multi_file_chart_spec_column_not_found():
+    spec = build_multi_file_chart_spec(
+        _multi_file_chart_intent(column_hint="Nonexistent"), _multi_file_data_files(),
+    )
+
+    assert spec["found"] is False
+    assert spec["reason"] == "column_not_found_in_file_a"
+
+
+def test_build_multi_file_chart_spec_file_not_found():
+    intent = _multi_file_chart_intent()
+    intent["from_file_hint"] = "Nonexistent"
+
+    spec = build_multi_file_chart_spec(intent, _multi_file_data_files())
+
+    assert spec["found"] is False
+    assert spec["reason"] == "file_not_found"
+
+
+def test_build_multi_file_chart_spec_role_not_assigned():
+    data_files = _multi_file_data_files()
+    data_files["file-a"]["role"] = None
+    data_files["file-b"]["role"] = None
+
+    spec = build_multi_file_chart_spec(_multi_file_chart_intent(), data_files)
+
+    assert spec["found"] is False
+    assert spec["reason"] == "role_not_assigned"
+
+
+def test_build_multi_file_chart_spec_insufficient_files():
+    spec = build_multi_file_chart_spec(_multi_file_chart_intent(), {"file-a": _multi_file_data_files()["file-a"]})
+
+    assert spec["found"] is False
+    assert spec["reason"] == "insufficient_files"
+
+
+def test_build_multi_file_chart_spec_unsupported_intent():
+    spec = build_multi_file_chart_spec(_multi_file_chart_intent(intent_name="unsupported"), _multi_file_data_files())
+
+    assert spec["found"] is False
+    assert spec["reason"] == "unsupported_comparison"
+
+
+def test_build_multi_file_chart_spec_no_new_calculation_reuses_numeric_summary_verbatim():
+    data_files = _multi_file_data_files(sum_a=12345.6789, sum_b=98765.4321)
+
+    spec = build_multi_file_chart_spec(_multi_file_chart_intent(), data_files)
+
+    assert spec["data"]["columns"][0]["sum"] == 12345.6789
+    assert spec["data"]["columns"][1]["sum"] == 98765.4321
+
+
+def test_build_multi_file_chart_spec_is_json_serializable():
+    spec = build_multi_file_chart_spec(_multi_file_chart_intent(), _multi_file_data_files())
+    json.dumps(spec)
+
+
+def test_build_multi_file_chart_spec_does_not_mutate_data_files():
+    data_files = _multi_file_data_files()
+    before = copy.deepcopy(data_files)
+
+    build_multi_file_chart_spec(_multi_file_chart_intent(), data_files)
+
+    assert data_files == before
+
+
+def test_build_multi_file_chart_spec_does_not_affect_existing_single_file_build_chart_spec():
+    # build_chart_spec's existing behavior must be completely unaffected.
+    intent = {"intent": "numeric_summary_chart", "column_hint": "Revenue", "metric": "sum",
+              "period_hint": None, "from_period_hint": None, "to_period_hint": None}
+    payload = {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 450.0}]}}
+
+    spec = build_chart_spec(intent, payload)
+
+    assert spec["found"] is True
+    assert spec["chart_type"] == "numeric_summary"

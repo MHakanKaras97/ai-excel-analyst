@@ -1,7 +1,8 @@
 import copy
 import json
 
-from src.qa_answer import answer_grounded_result
+from src.multi_file_comparison import dispatch_comparison_intent
+from src.qa_answer import answer_comparison_result, answer_grounded_result
 from src.qa_engine import dispatch_intent
 
 # ==================================================
@@ -321,3 +322,125 @@ def test_answer_accepts_actual_dispatch_intent_output_and_is_json_safe():
     answer = answer_grounded_result(grounded_result)
 
     assert answer == "TotalPrice in 2024-03 was 150.0."
+
+
+# ==================================================
+# answer_comparison_result (V0.7.5)
+# ==================================================
+
+
+def _data_files(sum_a=100.0, sum_b=130.0):
+    return {
+        "file-a": {
+            "file_id": "file-a", "filename": "jan.xlsx", "display_name": "January", "role": "previous",
+            "raw_df": None, "value_column": None, "period_column": None,
+            "analysis": {
+                "numeric_summary": {"columns": [{"name": "Revenue", "sum": sum_a, "count": 3}]},
+                "monthly_series": None, "trend": {"trend": "increasing"},
+                "period_comparison": None, "anomalies": {"anomaly_count": 1, "anomalies": []},
+            },
+        },
+        "file-b": {
+            "file_id": "file-b", "filename": "feb.xlsx", "display_name": "February", "role": "current",
+            "raw_df": None, "value_column": None, "period_column": None,
+            "analysis": {
+                "numeric_summary": {"columns": [{"name": "Revenue", "sum": sum_b, "count": 3}]},
+                "monthly_series": None, "trend": {"trend": "decreasing"},
+                "period_comparison": None, "anomalies": {"anomaly_count": 3, "anomalies": []},
+            },
+        },
+    }
+
+
+def _comparison_intent(intent_name, column_hint="Revenue", metric="sum"):
+    return {
+        "intent": intent_name, "column_hint": column_hint, "metric": metric,
+        "period_hint": None, "from_file_hint": "previous", "to_file_hint": "current",
+    }
+
+
+def test_answer_comparison_result_value_comparison_success():
+    result = dispatch_comparison_intent(_comparison_intent("file_value_comparison"), _data_files())
+
+    answer = answer_comparison_result(result)
+
+    assert "January" in answer
+    assert "February" in answer
+    assert "100.0" in answer
+    assert "130.0" in answer
+    assert "30.0" in answer
+
+
+def test_answer_comparison_result_trend_comparison_success():
+    result = dispatch_comparison_intent(_comparison_intent("file_trend_comparison", column_hint=None, metric=None), _data_files())
+
+    answer = answer_comparison_result(result)
+
+    assert "increasing" in answer
+    assert "decreasing" in answer
+
+
+def test_answer_comparison_result_anomaly_comparison_success():
+    result = dispatch_comparison_intent(_comparison_intent("file_anomaly_comparison", column_hint=None, metric=None), _data_files())
+
+    answer = answer_comparison_result(result)
+
+    assert "1" in answer
+    assert "3" in answer
+
+
+def test_answer_comparison_result_covers_new_failure_reasons():
+    reasons = [
+        "file_not_found", "insufficient_files", "role_not_assigned", "duplicate_role",
+        "column_not_found_in_file_a", "column_not_found_in_file_b",
+        "ambiguous_column_in_file_a", "ambiguous_column_in_file_b",
+        "period_not_found_in_file_a", "period_not_found_in_file_b",
+        "ambiguous_period_in_file_a", "ambiguous_period_in_file_b",
+        "trend_not_computed_in_file_a", "trend_not_computed_in_file_b",
+        "unsupported_comparison",
+    ]
+    for reason in reasons:
+        result = {"found": False, "reason": reason, "comparison_type": "file_value_comparison",
+                  "metric": None, "column": None, "period": None, "file_a": None, "file_b": None,
+                  "previous": None, "current": None, "absolute_change": None, "percentage_change": None,
+                  "is_valid": None, "extra": {}}
+        answer = answer_comparison_result(result)
+        assert isinstance(answer, str) and len(answer) > 0
+        assert answer != "That question couldn't be answered."
+
+
+def test_answer_comparison_result_insufficient_files():
+    result = dispatch_comparison_intent(_comparison_intent("file_value_comparison"), {
+        "file-a": _data_files()["file-a"],
+    })
+
+    answer = answer_comparison_result(result)
+
+    assert "two" in answer.lower()
+
+
+def test_answer_comparison_result_interpreter_failure_shape():
+    result = {"is_valid": False, "reason": "invalid_json"}
+
+    answer = answer_comparison_result(result)
+
+    assert "couldn't be interpreted" in answer
+
+
+def test_answer_comparison_result_does_not_affect_existing_single_file_dispatch():
+    # answer_grounded_result's existing behavior must be completely
+    # unaffected by the new answer_comparison_result function.
+    intent = {"intent": "column_stat", "metric": "sum", "column_hint": "Revenue",
+              "period_hint": None, "from_period_hint": None, "to_period_hint": None}
+    payload = {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 450.0}]}}
+
+    grounded_result = dispatch_intent(intent, payload)
+    answer = answer_grounded_result(grounded_result)
+
+    assert answer == "The sum of Revenue is 450.0."
+
+
+def test_answer_comparison_result_is_json_safe_end_to_end():
+    result = dispatch_comparison_intent(_comparison_intent("file_value_comparison"), _data_files())
+    json.dumps(result)
+    answer_comparison_result(result)  # must not raise

@@ -10,6 +10,7 @@ import copy
 
 import pandas as pd
 
+from src.multi_file_comparison import dispatch_comparison_intent
 from src.qa_engine import resolve_column, resolve_period
 
 NUMERIC_SUMMARY_METRICS = {"sum", "mean", "median", "min", "max", "std", "count"}
@@ -224,3 +225,61 @@ def build_chart_spec(intent: dict, analysis_payload: dict, monthly_series: pd.Se
     intent_name = intent.get("intent")
     dispatcher = _DISPATCHERS.get(intent_name, _dispatch_unsupported)
     return dispatcher(intent, analysis_payload, monthly_series, anomalies)
+
+
+# ==================================================
+# MULTI-FILE COMPARISON CHART (V0.7.6)
+# ==================================================
+
+
+def build_multi_file_chart_spec(intent: dict, data_files: dict) -> dict:
+    """Dispatch a structured multi-file chart intent against the currently
+    registered DataFile records and return a grounded, JSON-safe chart
+    specification — additive to this module, reusing the same result shape
+    `build_chart_spec` already produces.
+
+    Purely deterministic: no LLM call, no Plotly, no new analytics/
+    comparison logic — file/column resolution and the previous-vs-current
+    arithmetic are entirely delegated to
+    multi_file_comparison.dispatch_comparison_intent() (itself built on
+    qa_engine.resolve_column()/resolve_period() and
+    analytics_engine.compare_values()), never reimplemented here.
+
+    Only "file_comparison_chart" is supported in V0.7 (a two-file value
+    comparison for a selected column/metric). It is deliberately rendered
+    via chart_type "numeric_summary" — the comparison is reshaped into the
+    exact `{"columns": [...]}` input `chart_builder.build_numeric_summary_chart`
+    already expects, so no new chart_builder function or renderer branch is
+    required.
+    """
+    intent_name = intent.get("intent")
+    if intent_name != "file_comparison_chart":
+        return _failure("unsupported_comparison", intent_name or "unsupported")
+
+    comparison_intent = {
+        "intent": "file_value_comparison",
+        "column_hint": intent.get("column_hint"),
+        "metric": intent.get("metric"),
+        "period_hint": None,
+        "from_file_hint": intent.get("from_file_hint"),
+        "to_file_hint": intent.get("to_file_hint"),
+    }
+    comparison = dispatch_comparison_intent(comparison_intent, data_files)
+
+    if not comparison["found"]:
+        return _failure(comparison["reason"], intent_name, extra=comparison.get("extra"))
+
+    file_a, file_b = comparison["file_a"], comparison["file_b"]
+    label_a = file_a.get("display_name") or file_a.get("role") or "File A"
+    label_b = file_b.get("display_name") or file_b.get("role") or "File B"
+    metric = comparison["metric"]
+
+    data = {"columns": [
+        {"name": label_a, metric: comparison["previous"]},
+        {"name": label_b, metric: comparison["current"]},
+    ]}
+
+    return _success(
+        intent_name, "numeric_summary", column=comparison["column"], metric=metric,
+        data=data, extra={"file_a": file_a, "file_b": file_b},
+    )

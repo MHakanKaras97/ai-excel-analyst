@@ -199,7 +199,7 @@ def _profile_columns(analysis_payload: dict) -> list:
     return (analysis_payload.get("profile") or {}).get("columns") or []
 
 
-def _resolve_trend_column(column_hint, analysis_payload: dict, monthly_series):
+def resolve_trend_column(column_hint, analysis_payload: dict, monthly_series):
     """Resolve an optional column hint against the known numeric columns.
 
     Period-based intents operate on the single, already-selected trend
@@ -218,6 +218,9 @@ def _resolve_trend_column(column_hint, analysis_payload: dict, monthly_series):
     passed through unchanged.
 
     Returns (ok, column_name_or_None, reason_or_None, candidates).
+
+    Public: also reused by src/multi_file_comparison.py (V0.7.3) so the
+    identical column/series-mismatch rule isn't implemented a third time.
     """
     series_name = getattr(monthly_series, "name", None) if monthly_series is not None else None
 
@@ -240,7 +243,7 @@ def _dispatch_period_value(intent: dict, analysis_payload: dict, monthly_series)
     if monthly_series is None or len(monthly_series) == 0:
         return _grounded_result(False, "trend_not_computed", "period_value")
 
-    ok, column, reason, candidates = _resolve_trend_column(intent.get("column_hint"), analysis_payload, monthly_series)
+    ok, column, reason, candidates = resolve_trend_column(intent.get("column_hint"), analysis_payload, monthly_series)
     if not ok:
         return _grounded_result(False, reason, "period_value", extra={"candidates": candidates} if candidates else None)
 
@@ -262,7 +265,7 @@ def _dispatch_period_extremum(intent: dict, analysis_payload: dict, monthly_seri
     if monthly_series is None or len(monthly_series) == 0:
         return _grounded_result(False, "trend_not_computed", "period_extremum")
 
-    ok, column, reason, candidates = _resolve_trend_column(intent.get("column_hint"), analysis_payload, monthly_series)
+    ok, column, reason, candidates = resolve_trend_column(intent.get("column_hint"), analysis_payload, monthly_series)
     if not ok:
         return _grounded_result(False, reason, "period_extremum", extra={"candidates": candidates} if candidates else None)
 
@@ -276,7 +279,7 @@ def _dispatch_period_change(intent: dict, analysis_payload: dict, monthly_series
     if not period_comparison:
         return _grounded_result(False, "trend_not_computed", "period_change")
 
-    ok, column, reason, candidates = _resolve_trend_column(intent.get("column_hint"), analysis_payload, monthly_series)
+    ok, column, reason, candidates = resolve_trend_column(intent.get("column_hint"), analysis_payload, monthly_series)
     if not ok:
         return _grounded_result(False, reason, "period_change", extra={"candidates": candidates} if candidates else None)
 
@@ -344,7 +347,7 @@ def _dispatch_anomaly_check(intent: dict, analysis_payload: dict, monthly_series
     if not anomalies:
         return _grounded_result(False, "trend_not_computed", "anomaly_check")
 
-    ok, column, reason, candidates = _resolve_trend_column(intent.get("column_hint"), analysis_payload, monthly_series)
+    ok, column, reason, candidates = resolve_trend_column(intent.get("column_hint"), analysis_payload, monthly_series)
     if not ok:
         return _grounded_result(False, reason, "anomaly_check", extra={"candidates": candidates} if candidates else None)
 
