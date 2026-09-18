@@ -1,0 +1,122 @@
+[
+  {
+    "case_id": "sem_001", "category": "semantic_resolution",
+    "input": {"term": "Revenue", "schema_columns": [{"name": "Revenue"}, {"name": "Net Revenue"}]},
+    "expected": {"found": true, "column": "Revenue"},
+    "metadata": {"notes": "exact match wins before any semantic scoring is attempted"}
+  },
+  {
+    "case_id": "sem_002", "category": "semantic_resolution",
+    "input": {"term": "revenue", "schema_columns": [{"name": "Revenue"}, {"name": "REVENUE"}]},
+    "expected": {"found": false, "reason": "ambiguous_column"},
+    "metadata": {"notes": "an exact case-insensitive ambiguity is reported as-is, not resolved semantically"}
+  },
+  {
+    "case_id": "sem_003", "category": "semantic_resolution",
+    "input": {"term": "total sales", "schema_columns": [{"name": "Sales Amount"}, {"name": "Net Revenue"}, {"name": "Units Sold"}]},
+    "expected": {"found": true, "column": "Sales Amount"},
+    "metadata": {"notes": "the headline example from the V0.8 spec: a business term with no exact/fuzzy match resolves via keyword overlap"}
+  },
+  {
+    "case_id": "sem_004", "category": "semantic_resolution",
+    "input": {"term": "shipping weight", "schema_columns": [{"name": "Sales Amount"}, {"name": "Region"}]},
+    "expected": {"found": false, "reason": "column_not_found"},
+    "metadata": {"notes": "a term with no plausible column at all is not_found, never guessed"}
+  },
+  {
+    "case_id": "sem_005", "category": "semantic_resolution",
+    "input": {"term": "   ", "schema_columns": [{"name": "Sales Amount"}]},
+    "expected": {"found": false, "reason": "column_not_found"},
+    "metadata": {}
+  },
+  {
+    "case_id": "sem_006", "category": "semantic_resolution",
+    "input": {"term": "net", "schema_columns": [{"name": "Net Revenue"}, {"name": "Net Profit"}]},
+    "expected": {"found": false, "reason": "ambiguous_column"},
+    "metadata": {"notes": "two equally strong high-confidence candidates must not be silently picked between"}
+  },
+  {
+    "case_id": "sem_007", "category": "semantic_resolution",
+    "input": {"term": "amount", "schema_columns": [{"name": "Total Price"}]},
+    "expected": {"found": false, "reason": "ambiguous_column"},
+    "metadata": {"notes": "a purely synonym-derived (non-literal) overlap is never confident enough to auto-resolve alone"}
+  },
+  {
+    "case_id": "sem_008", "category": "semantic_resolution",
+    "input": {"term": "gross profit", "schema_columns": [{"name": "Gross Profit"}, {"name": "Net Profit"}, {"name": "Region"}]},
+    "expected": {"found": true, "column": "Gross Profit"},
+    "metadata": {}
+  },
+  {
+    "case_id": "sem_009", "category": "semantic_resolution",
+    "input": {"term": "quantity", "schema_columns": [{"name": "Units Sold"}, {"name": "Region"}]},
+    "expected": {"found": false, "reason": "ambiguous_column"},
+    "metadata": {"notes": "a single medium-confidence candidate is surfaced for confirmation, not auto-picked"}
+  },
+  {
+    "case_id": "sem_010", "category": "semantic_resolution",
+    "input": {"term": "margin", "schema_columns": [{"name": "Profit Margin"}, {"name": "Region"}]},
+    "expected": {"found": true, "column": "Profit Margin"},
+    "metadata": {"notes": "regression case for a scoring bug where synonym expansion could push confidence above 1.0"}
+  },
+  {
+    "case_id": "sem_011", "category": "semantic_resolution",
+    "input": {"term": "total revenue", "schema_columns": [{"name": "Net Revenue"}, {"name": "Total_Price"}, {"name": "Region"}]},
+    "expected": {"found": false, "reason": "ambiguous_column"},
+    "metadata": {}
+  },
+  {
+    "case_id": "sem_012", "category": "semantic_resolution",
+    "input": {"term": "units", "schema_columns": [{"name": "Units Sold"}, {"name": "Quantity Shipped"}]},
+    "expected": {"found": true, "column": "Units Sold"},
+    "metadata": {}
+  },
+  {
+    "case_id": "sem_013", "category": "semantic_resolution",
+    "input": {"term": "price", "schema_columns": [{"name": "Total Price"}, {"name": "Unit Price"}]},
+    "expected": {"found": false, "reason": "ambiguous_column"},
+    "metadata": {}
+  },
+  {
+    "case_id": "sem_014", "category": "semantic_resolution",
+    "input": {"term": "sum", "schema_columns": [{"name": "Total Amount"}, {"name": "Region"}]},
+    "expected": {"found": false, "reason": "ambiguous_column"},
+    "metadata": {"notes": "a single high-confidence-band synonym-only candidate can still exceed the ambiguity threshold; still surfaced rather than auto-picked when it is the only candidate found via synonym expansion alone would need a literal overlap to auto-resolve"}
+  },
+  {
+    "case_id": "sem_015", "category": "semantic_resolution",
+    "input": {"term": "nonexistent metric xyz", "schema_columns": [{"name": "Revenue"}, {"name": "Region"}]},
+    "expected": {"found": false, "reason": "column_not_found"},
+    "metadata": {}
+  },
+  {
+    "case_id": "sem_016", "category": "semantic_resolution",
+    "input": {"term": "Region", "schema_columns": [{"name": "Revenue"}, {"name": "Region"}]},
+    "expected": {"found": true, "column": "Region"},
+    "metadata": {"notes": "a dimension column resolves exactly like a measure column"}
+  },
+  {
+    "case_id": "sem_017", "category": "semantic_resolution",
+    "input": {"term": "sales revenue", "schema_columns": [{"name": "Sales Amount"}, {"name": "Net Revenue"}]},
+    "expected": {"found": false, "reason": "ambiguous_column"},
+    "metadata": {}
+  },
+  {
+    "case_id": "sem_018", "category": "semantic_resolution",
+    "input": {"term": "count", "schema_columns": [{"name": "Region"}, {"name": "Revenue"}]},
+    "expected": {"found": false, "reason": "column_not_found"},
+    "metadata": {}
+  },
+  {
+    "case_id": "sem_019", "category": "semantic_resolution",
+    "input": {"term": "profit", "schema_columns": [{"name": "Gross Profit"}, {"name": "Net Profit"}, {"name": "Profit Margin"}]},
+    "expected": {"found": false, "reason": "ambiguous_column"},
+    "metadata": {"notes": "three plausible candidates, none uniquely dominant"}
+  },
+  {
+    "case_id": "sem_020", "category": "semantic_resolution",
+    "input": {"term": "Total_Price", "schema_columns": [{"name": "Total_Price"}, {"name": "Region"}]},
+    "expected": {"found": true, "column": "Total_Price"},
+    "metadata": {}
+  }
+]

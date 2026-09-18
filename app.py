@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from src.ai_interpreter import interpret
+from src.anomaly_investigation import investigate_anomaly
 from src.chart_builder import (
     build_missing_values_chart,
     build_numeric_summary_chart,
@@ -17,6 +18,9 @@ from src.chart_builder import (
 from src.chart_intent_interpreter import interpret_chart_question
 from src.comparison_ai_payload import build_comparison_ai_payload
 from src.comparison_prompt_builder import build_comparison_prompt
+from src.evidence.builder import build_evidence_from_comparison_result, build_evidence_from_grounded_result
+from src.evidence.formatter import format_evidence_list
+from src.evidence_ai_interpreter import interpret_with_evidence
 from src.excel_loader import load_excel
 from src.file_analysis import (
     analyze_file,
@@ -24,6 +28,7 @@ from src.file_analysis import (
     format_column_option,
     numeric_column_names,
 )
+from src.forecasting.baseline import naive_forecast, seasonal_naive_forecast
 from src.gemini_provider import GeminiProvider
 from src.multi_file_chart_intent_interpreter import interpret_multi_file_chart_question
 from src.multi_file_comparison import dispatch_comparison_intent
@@ -33,6 +38,7 @@ from src.qa_chart_engine import build_chart_spec, build_multi_file_chart_spec
 from src.qa_chart_renderer import render_chart_spec
 from src.qa_engine import dispatch_intent
 from src.qa_interpreter import interpret_question
+from src.schema.schema_analyzer import analyze_schema
 
 ROLE_OPTIONS = [None, "previous", "current", "reference", "comparison"]
 
@@ -92,7 +98,11 @@ def determine_active_file_id(data_files: dict) -> str | None:
     return None
 
 
-PER_FILE_STATE_KEYS = ("qa_answers", "chart_specs", "ai_results", "ai_cache_keys")
+PER_FILE_STATE_KEYS = (
+    "qa_answers", "chart_specs", "ai_results", "ai_cache_keys",
+    "qa_evidence", "qa_ai_explanations", "qa_ai_explanation_cache_keys",
+    "schema_results",
+)
 COMPARISON_STATE_KEYS = (
     "comparison_qa_answer", "comparison_chart_spec",
     "comparison_ai_result", "comparison_ai_cache_key", "comparison_result",
@@ -286,6 +296,14 @@ def render_comparison_section(data_files: dict) -> None:
     if st.session_state.get("comparison_qa_answer"):
         st.write(st.session_state["comparison_qa_answer"])
 
+        comparison_result = st.session_state.get("comparison_result")
+        if comparison_result is not None:
+            evidence = build_evidence_from_comparison_result(comparison_result)
+            if evidence:
+                with st.expander("Why this answer?"):
+                    for line in format_evidence_list(evidence):
+                        st.write(f"- {line}")
+
     chart_question = st.text_input("Describe a chart comparing two files", key="comparison_chart_question")
     if st.button("Show Comparison Chart", key="comparison_show_chart"):
         if not chart_question.strip():
@@ -423,6 +441,20 @@ def main():
     st.dataframe(pd.DataFrame(profile["columns"]))
     st.plotly_chart(build_missing_values_chart(profile), use_container_width=True)
 
+    st.subheader("Detected Semantic Roles")
+    st.caption(
+        "Deterministic role/type detection based on dtype and value shape "
+        "(e.g. currency, percentage) — not an LLM guess. Confidence reflects "
+        "how certain the detection itself is, not how important the column is."
+    )
+    schema = analyze_schema(raw_df, profile)
+    st.session_state["schema_results"][active_file_id] = schema
+    st.dataframe(pd.DataFrame([
+        {"column": c["name"], "role": c["role"], "semantic_type": c["semantic_type"],
+         "unit": c["unit"], "time_role": c["time_role"], "confidence": round(c["confidence"], 2)}
+        for c in schema["columns"]
+    ]))
+
     normalized_df = analysis["normalized_df"]
     numeric_summary = analysis["numeric_summary"]
     date_summary = analysis["date_summary"]
@@ -494,6 +526,39 @@ def main():
                     use_container_width=True,
                 )
 
+            st.write("**Forecast (baseline, not a historical fact)**")
+            forecast_result = naive_forecast(monthly_series, periods_ahead=1)
+            if forecast_result["insufficient_data"]:
+                st.caption("Not enough history to produce a baseline forecast.")
+            else:
+                entry = forecast_result["forecasts"][0]
+                bounds_note = (
+                    f" (range: {entry['lower_bound']:.2f} to {entry['upper_bound']:.2f})"
+                    if entry["bounds_available"] else " (range unavailable — too little history)"
+                )
+                st.caption(
+                    f"Naive baseline forecast for {entry['period']}: {entry['forecast']:.2f}{bounds_note}"
+                )
+                seasonal_result = seasonal_naive_forecast(monthly_series, periods_ahead=1)
+                if not seasonal_result["insufficient_data"]:
+                    seasonal_entry = seasonal_result["forecasts"][0]
+                    st.caption(f"Seasonal-naive baseline forecast for {seasonal_entry['period']}: {seasonal_entry['forecast']:.2f}")
+
+            if anomalies and anomalies.get("anomaly_count"):
+                with st.expander(f"Investigate {anomalies['anomaly_count']} anomal{'y' if anomalies['anomaly_count'] == 1 else 'ies'}"):
+                    st.caption(
+                        "Deterministic context only — a coincident change is never "
+                        "reported as a cause."
+                    )
+                    for anomaly_record in anomalies["anomalies"]:
+                        investigation = investigate_anomaly(anomaly_record, value_option[1], monthly_series)
+                        own_change = investigation["own_change"] or {}
+                        st.write(
+                            f"- {investigation['period']}: {investigation['column']} was "
+                            f"{investigation['value']} ({investigation['direction']}); "
+                            f"previous period was {own_change.get('previous')}."
+                        )
+
     data_file["analysis"] = analysis
 
     analytics_payload = build_analytics_payload(numeric_summary, date_summary, trend, period_comparison, anomalies)
@@ -524,6 +589,7 @@ def main():
     if st.button("Get Answer", key="qa_get_answer"):
         if not question.strip():
             st.session_state["qa_answers"][active_file_id] = None
+            st.session_state["qa_evidence"][active_file_id] = []
         else:
             provider = GeminiProvider()
             column_names = [c["name"] for c in profile["columns"]]
@@ -532,11 +598,32 @@ def main():
                 qa_payload = build_qa_analysis_payload(numeric_summary, profile, period_comparison, anomalies)
                 grounded_result = dispatch_intent(interpretation["intent"], qa_payload, monthly_series)
                 st.session_state["qa_answers"][active_file_id] = answer_grounded_result(grounded_result)
+                st.session_state["qa_evidence"][active_file_id] = build_evidence_from_grounded_result(
+                    grounded_result, file_label=data_file["display_name"],
+                )
             else:
                 st.session_state["qa_answers"][active_file_id] = answer_grounded_result(interpretation)
+                st.session_state["qa_evidence"][active_file_id] = []
 
     if st.session_state["qa_answers"].get(active_file_id):
         st.write(st.session_state["qa_answers"][active_file_id])
+
+        evidence = st.session_state["qa_evidence"].get(active_file_id) or []
+        if evidence:
+            with st.expander("Why this answer?"):
+                for line in format_evidence_list(evidence):
+                    st.write(f"- {line}")
+
+                evidence_cache_key = json.dumps(evidence, sort_keys=True, default=str)
+                if st.button("Explain with AI", key="qa_explain_with_ai"):
+                    provider = GeminiProvider()
+                    st.session_state["qa_ai_explanations"][active_file_id] = interpret_with_evidence(
+                        evidence, provider, question=question,
+                    )
+                    st.session_state["qa_ai_explanation_cache_keys"][active_file_id] = evidence_cache_key
+
+                if st.session_state["qa_ai_explanation_cache_keys"].get(active_file_id) == evidence_cache_key:
+                    render_ai_insight_result(st.session_state["qa_ai_explanations"].get(active_file_id))
 
     st.subheader("Ask for a Chart")
     st.caption(

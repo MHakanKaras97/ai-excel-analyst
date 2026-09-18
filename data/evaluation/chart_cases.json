@@ -1,0 +1,103 @@
+[
+  {
+    "case_id": "chart_001", "category": "chart_intent_classification",
+    "input": {"question": "Show me the revenue trend", "column_names": ["Revenue"],
+      "llm_response": "{\"intent\": \"trend_chart\", \"column_hint\": \"Revenue\", \"metric\": null, \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": true},
+    "metadata": {}
+  },
+  {
+    "case_id": "chart_002", "category": "chart_intent_classification",
+    "input": {"question": "Chart total revenue", "column_names": ["Revenue"],
+      "llm_response": "{\"intent\": \"numeric_summary_chart\", \"column_hint\": \"Revenue\", \"metric\": \"sum\", \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": true},
+    "metadata": {}
+  },
+  {
+    "case_id": "chart_003", "category": "chart_intent_classification",
+    "input": {"question": "Chart the change from Jan to Feb", "column_names": ["Revenue"],
+      "llm_response": "{\"intent\": \"period_change_chart\", \"column_hint\": null, \"metric\": null, \"period_hint\": null, \"from_period_hint\": \"2024-01\", \"to_period_hint\": \"2024-02\"}"},
+    "expected": {"is_valid": true},
+    "metadata": {}
+  },
+  {
+    "case_id": "chart_004", "category": "chart_intent_classification",
+    "input": {"question": "Chart missing values", "column_names": [],
+      "llm_response": "{\"intent\": \"missing_values_chart\", \"column_hint\": null, \"metric\": null, \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": true},
+    "metadata": {}
+  },
+  {
+    "case_id": "chart_005", "category": "chart_intent_classification",
+    "input": {"question": "Chart my mood", "column_names": [],
+      "llm_response": "{\"intent\": \"unsupported\", \"column_hint\": null, \"metric\": null, \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "unsupported is a valid, safe classification for a chart request with no data mapping"}
+  },
+  {
+    "case_id": "chart_006", "category": "chart_intent_classification",
+    "input": {"question": "x", "column_names": [],
+      "llm_response": "{\"intent\": \"forecast_chart\", \"column_hint\": null, \"metric\": null, \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": false, "reason": "invalid_schema"},
+    "metadata": {"notes": "V0.7 has no forecast_chart intent; must be rejected, not accepted as unsupported"}
+  },
+  {
+    "case_id": "chart_007", "category": "chart_intent_classification",
+    "input": {"question": "x", "column_names": ["Revenue"],
+      "llm_response": "{\"intent\": \"numeric_summary_chart\", \"column_hint\": \"Revenue\", \"metric\": \"average\", \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": false, "reason": "invalid_schema"},
+    "metadata": {"notes": "\"average\" is not in the closed metric enum (the enum uses \"mean\")"}
+  },
+  {
+    "case_id": "chart_008", "category": "chart_intent_classification",
+    "input": {"question": "x", "column_names": [],
+      "llm_response": "{\"intent\": \"trend_chart\", \"column_hint\": null, \"metric\": null, \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null, \"extra\": 1}"},
+    "expected": {"is_valid": false, "reason": "invalid_schema"},
+    "metadata": {"notes": "an extra key makes the response fail the closed-schema check"}
+  },
+  {
+    "case_id": "chart_009", "category": "chart_intent_classification",
+    "input": {"question": "x", "column_names": [],
+      "llm_response": "{\"intent\": \"trend_chart\", \"column_hint\": null, \"metric\": null, \"period_hint\": null, \"from_period_hint\": null}"},
+    "expected": {"is_valid": false, "reason": "invalid_schema"},
+    "metadata": {"notes": "a missing required key makes the response fail the closed-schema check"}
+  },
+  {
+    "case_id": "chart_010", "category": "chart_intent_classification",
+    "input": {"question": "x", "column_names": [], "llm_response": "not json"},
+    "expected": {"is_valid": false, "reason": "invalid_json"},
+    "metadata": {}
+  },
+  {
+    "case_id": "chart_011", "category": "chart_intent_classification",
+    "input": {"question": "x", "column_names": [],
+      "llm_response": "{\"intent\": \"trend_chart\", \"column_hint\": 42, \"metric\": null, \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": false, "reason": "invalid_schema"},
+    "metadata": {"notes": "a numeric column_hint (must be string-or-null) is rejected"}
+  },
+  {
+    "case_id": "chart_012", "category": "chart_intent_classification",
+    "input": {"question": "std of revenue", "column_names": ["Revenue"],
+      "llm_response": "{\"intent\": \"numeric_summary_chart\", \"column_hint\": \"Revenue\", \"metric\": \"std\", \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "\"std\" is a chart-only metric not available to the single-file Q&A schema"}
+  },
+  {
+    "case_id": "chart_013", "category": "chart_intent_classification",
+    "input": {"question": "x", "column_names": [], "provider_error": "missing_api_key"},
+    "expected": {"is_valid": false, "reason": "missing_api_key"},
+    "metadata": {}
+  },
+  {
+    "case_id": "chart_014", "category": "column_resolution",
+    "input": {"column_hint": "TotalPrice", "column_names": ["TotalPrice", "Revenue"]},
+    "expected": {"found": true, "column": "TotalPrice"},
+    "metadata": {"notes": "chart column resolution reuses the same deterministic qa_engine.resolve_column()"}
+  },
+  {
+    "case_id": "chart_015", "category": "column_resolution",
+    "input": {"column_hint": "Revenue", "column_names": ["TotalPrice", "Revenue", "REVENUE"]},
+    "expected": {"found": false, "reason": "ambiguous_column"},
+    "metadata": {}
+  }
+]

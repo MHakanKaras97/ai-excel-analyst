@@ -1,0 +1,127 @@
+[
+  {
+    "case_id": "qa_001", "category": "intent_classification",
+    "input": {"question": "What is total revenue?", "column_names": ["Revenue"],
+      "llm_response": "{\"intent\": \"column_stat\", \"metric\": \"sum\", \"column_hint\": \"Revenue\", \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "valid column_stat schema is accepted"}
+  },
+  {
+    "case_id": "qa_002", "category": "intent_classification",
+    "input": {"question": "What is the weather?", "column_names": [],
+      "llm_response": "{\"intent\": \"unsupported\", \"metric\": null, \"column_hint\": null, \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "unsupported intent is a valid, safe classification"}
+  },
+  {
+    "case_id": "qa_003", "category": "intent_classification",
+    "input": {"question": "Revenue in March 2024?", "column_names": ["Revenue"],
+      "llm_response": "{\"intent\": \"period_value\", \"metric\": null, \"column_hint\": \"Revenue\", \"period_hint\": \"March 2024\", \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "period_value with a natural-language period hint"}
+  },
+  {
+    "case_id": "qa_004", "category": "intent_classification",
+    "input": {"question": "Any anomalies in revenue?", "column_names": ["Revenue"],
+      "llm_response": "{\"intent\": \"anomaly_check\", \"metric\": null, \"column_hint\": \"Revenue\", \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": true},
+    "metadata": {}
+  },
+  {
+    "case_id": "qa_005", "category": "intent_classification",
+    "input": {"question": "x", "column_names": [], "llm_response": "not json"},
+    "expected": {"is_valid": false, "reason": "invalid_json"},
+    "metadata": {"notes": "malformed provider output must be rejected, never guessed at"}
+  },
+  {
+    "case_id": "qa_006", "category": "intent_classification",
+    "input": {"question": "x", "column_names": [],
+      "llm_response": "{\"intent\": \"column_stat\", \"metric\": \"average\", \"column_hint\": \"Revenue\", \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": false, "reason": "invalid_schema"},
+    "metadata": {"notes": "\"average\" is not in the closed metric enum"}
+  },
+  {
+    "case_id": "qa_007", "category": "intent_classification",
+    "input": {"question": "x", "column_names": [], "provider_error": "provider_error"},
+    "expected": {"is_valid": false, "reason": "provider_error"},
+    "metadata": {"notes": "a provider failure must surface as a deterministic failure reason"}
+  },
+  {
+    "case_id": "qa_008", "category": "column_resolution",
+    "input": {"column_hint": "Revenu", "column_names": ["Revenue", "Region"]},
+    "expected": {"found": true, "column": "Revenue"},
+    "metadata": {"notes": "conservative fuzzy match on a near-identical typo"}
+  },
+  {
+    "case_id": "qa_009", "category": "column_resolution",
+    "input": {"column_hint": "revenue", "column_names": ["Revenue", "REVENUE"]},
+    "expected": {"found": false, "reason": "ambiguous_column"},
+    "metadata": {"notes": "case-insensitive exact match with two identically-named columns"}
+  },
+  {
+    "case_id": "qa_010", "category": "column_resolution",
+    "input": {"column_hint": "Net Rev.", "column_names": ["Net Revenue", "Region"]},
+    "expected": {"found": false, "reason": "column_not_found"},
+    "metadata": {"notes": "an abbreviated business term does not resolve via exact/fuzzy matching alone"}
+  },
+  {
+    "case_id": "qa_011", "category": "column_resolution",
+    "input": {"column_hint": "Total_Price", "column_names": ["Total_Price", "Region"]},
+    "expected": {"found": true, "column": "Total_Price"},
+    "metadata": {"notes": "a column name containing digits/underscores resolves exactly"}
+  },
+  {
+    "case_id": "qa_012", "category": "column_resolution",
+    "input": {"column_hint": "Nonexistent", "column_names": ["Revenue", "Region"]},
+    "expected": {"found": false, "reason": "column_not_found"},
+    "metadata": {}
+  },
+  {
+    "case_id": "qa_013", "category": "column_resolution",
+    "input": {"column_hint": "total sales", "column_names": ["Sales Amount", "Net Revenue", "Units Sold"]},
+    "expected": {"found": false, "reason": "column_not_found"},
+    "metadata": {"notes": "exact/fuzzy resolution alone must not guess a business-term match; semantic_resolution (V0.8.6) is the fallback layer, tested separately"}
+  },
+  {
+    "case_id": "qa_014", "category": "column_resolution",
+    "input": {"column_hint": "", "column_names": ["Revenue"]},
+    "expected": {"found": false, "reason": "column_not_found"},
+    "metadata": {"notes": "a blank hint is never resolved"}
+  },
+  {
+    "case_id": "qa_015", "category": "period_resolution",
+    "input": {"period_hint": "2024-03", "period_labels": ["2024-01", "2024-02", "2024-03", "2023-03"]},
+    "expected": {"found": true, "period": "2024-03"},
+    "metadata": {}
+  },
+  {
+    "case_id": "qa_016", "category": "period_resolution",
+    "input": {"period_hint": "March 2024", "period_labels": ["2024-01", "2024-02", "2024-03", "2023-03"]},
+    "expected": {"found": true, "period": "2024-03"},
+    "metadata": {"notes": "full month-name-and-year is normalized to YYYY-MM"}
+  },
+  {
+    "case_id": "qa_017", "category": "period_resolution",
+    "input": {"period_hint": "March", "period_labels": ["2024-01", "2024-02", "2024-03", "2023-03"]},
+    "expected": {"found": false, "reason": "ambiguous_period"},
+    "metadata": {"notes": "a bare month matching two different years is never defaulted to either"}
+  },
+  {
+    "case_id": "qa_018", "category": "period_resolution",
+    "input": {"period_hint": "January", "period_labels": ["2024-01", "2024-02", "2024-03", "2023-03"]},
+    "expected": {"found": true, "period": "2024-01"},
+    "metadata": {"notes": "a bare month matching exactly one year resolves"}
+  },
+  {
+    "case_id": "qa_019", "category": "period_resolution",
+    "input": {"period_hint": "2025-01", "period_labels": ["2024-01", "2024-02", "2024-03", "2023-03"]},
+    "expected": {"found": false, "reason": "period_not_found"},
+    "metadata": {}
+  },
+  {
+    "case_id": "qa_020", "category": "period_resolution",
+    "input": {"period_hint": "April", "period_labels": ["2024-01", "2024-02", "2024-03", "2023-03"]},
+    "expected": {"found": false, "reason": "period_not_found"},
+    "metadata": {"notes": "a month name with no matching year in the known labels"}
+  }
+]

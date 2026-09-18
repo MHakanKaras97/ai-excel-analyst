@@ -147,6 +147,14 @@ def _has_hallucinated_numbers(parsed: dict, analytics_payload: dict) -> bool:
     return any(not _number_is_supported(number, payload_numbers) for number in response_numbers)
 
 
+# Public alias: reused by src/evidence_ai_interpreter.py (V0.8.14) so the
+# evidence-aware AI layer doesn't reimplement numeric grounding — `parsed`
+# only needs the same 5 prose fields (summary/key_insights/
+# trend_interpretation/warnings/recommendations) checked here; any extra
+# keys in a superset schema are ignored.
+has_hallucinated_numbers = _has_hallucinated_numbers
+
+
 def interpret(analytics_payload: dict, provider: AIProvider,
                prompt_builder: Callable[[dict], str] = build_prompt) -> dict:
     prompt = prompt_builder(analytics_payload)

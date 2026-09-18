@@ -4,8 +4,10 @@ An AI-powered Excel analytics and executive reporting application.
 
 ## Project Status
 
-🚧 In development — V0.1 through V0.7 (multi-file comparison, Q&A, and
-charts) are complete.
+🚧 In development — V0.1 through V0.8 (Trusted & Intelligent Analytics:
+semantic schema detection, evidence/provenance, advanced analytics,
+forecasting baselines, anomaly investigation, and an evaluation framework)
+are complete.
 
 ## Goal
 
@@ -47,9 +49,11 @@ Deterministic Analytics + Anomaly Detection (per file)
  ↓
 AI Analyst Core (interprets only — never calculates)
  ↓
-Charts / Q&A / Insights
+Single-file Charts / Q&A / Insights
  ↓
-Multi-file / Report / PPT
+Multi-file Comparison / Multi-file Q&A / Multi-file Charts / Comparison Insight
+ ↓
+Report / PPT (planned, V0.8+)
 ```
 
 ### Q&A Architecture (V0.5 — complete)
@@ -241,9 +245,124 @@ unchanged.
   Streamlit rerun (the `file_uploader` widget otherwise keeps holding the
   same bytes).
 
+### V0.8 — Trusted & Intelligent Analytics (complete)
+
+V0.8 adds five independent, additive layers on top of the existing V0.7
+pipeline. Nothing in V0.1–V0.7 was rewritten to build these — each layer
+is new code that calls into the existing deterministic modules.
+
+**LLM proposes/interprets; deterministic Python validates/calculates —
+the same split as every earlier version, extended to five new areas.**
+
+#### Semantic schema detection (`src/schema/`)
+
+```
+DataFrame
+ ↓
+Deterministic profiling/normalization (existing V0.1-V0.2 modules, reused)
+ ↓
+Candidate ColumnSchema per column (role/semantic_type/unit/time_role/confidence)
+ ↓
+LLM semantic proposal (ONE call, closed schema, compact metadata only — never the raw dataset, never file_id)
+ ↓
+Python validation (schema_resolver.merge_llm_schema_proposal) — a proposal
+that contradicts strong (dtype-certain) deterministic evidence is rejected,
+not accepted verbatim
+ ↓
+Validated DatasetSchema
+```
+
+Column roles: `dimension | measure | date | identifier | unknown`.
+Semantic types: `numeric | currency | percentage | date | text | identifier
+| unknown`. `resolve_semantic_column()` additionally lets a business term
+(e.g. "total sales") resolve against real column names when exact/fuzzy
+matching (the existing V0.7 `resolve_column()`) finds nothing — via a
+small, explicit synonym table and conservative keyword-overlap scoring,
+never embeddings. It only auto-resolves when exactly one candidate clears
+a high-confidence band with real lexical overlap; anything less is
+reported `ambiguous_column`, never guessed.
+
+#### Evidence / provenance (`src/evidence/`)
+
+Every AI-facing explanation is now backed by explicit Evidence objects —
+small, fully-keyed, JSON-safe records of one deterministic fact (a value,
+a change, an anomaly count, a comparison, a forecast), built verbatim from
+an already-computed `qa_engine`/`multi_file_comparison` result
+(`src/evidence/builder.py`). An Evidence object never contains a `file_id`
+(`src/evidence/validator.py` also checks this defensively). The
+`contains_unsupported_causal_claim()` guard flags common causal-connective
+phrasing ("caused", "led to", "due to the decrease in...") between two
+evidenced facts — coincident movement may be reported ("Units also
+decreased during the same period"), never asserted as a cause.
+
+#### Evidence-aware AI (`src/evidence_ai_interpreter.py`, `src/evidence_qa.py`)
+
+A sibling to the existing `ai_interpreter.interpret()` — same one-call,
+closed-schema, grounded pattern (existing numeric-hallucination grounding
+is reused verbatim, not reimplemented) — extended with two additional
+deterministic checks: every `evidence_ids_used` the AI claims to have
+relied on must actually exist, and the response must not contain an
+unsupported causal claim. `src/evidence_qa.py` composes this on top of the
+*unmodified* Q&A/comparison pipelines: the deterministic answer is always
+computed and returned first, and a failed or skipped AI explanation never
+blanks it out.
+
+#### Advanced analytics (`src/advanced_analytics/`)
+
+`rolling_mean`, `rolling_std`, `growth_rate` (delegates to the existing
+`compare_periods()`), `volatility`, and `seasonality_signal` — each
+returns an explicit `insufficient_data` flag rather than a fabricated
+value when the history is too short (e.g. `seasonality_signal` requires at
+least two full years of monthly data).
+
+#### Forecasting baseline (`src/forecasting/`)
+
+Exactly two methods: `naive` (flat carry-forward) and `seasonal_naive`
+(repeats the value from one season ago). Every forecast entry is marked
+`is_forecast: true` and carries `bounds_available` — when there isn't
+enough history to defensibly estimate a residual spread, `lower_bound`/
+`upper_bound` are `None` rather than a fabricated interval.
+`src/forecasting/evaluator.py` backtests a method against held-out history
+(MAE/RMSE always; MAPE only over non-zero actuals, `None` otherwise) and
+reports `insufficient_history` rather than forcing a metric.
+
+#### Anomaly investigation (`src/anomaly_investigation.py`)
+
+For an already-detected anomaly (from the existing V0.4
+`detect_iqr_anomalies()`), gathers the period's own change (via the
+existing `compare_values()`) and, optionally, whether other already-
+analyzed measures moved during the same period — reported strictly as
+coincidence, never as cause.
+
+#### Evaluation framework (`src/evaluation/`, `data/evaluation/`)
+
+A benchmark of **90 cases** (`qa_cases.json`: 20, `chart_cases.json`: 15,
+`semantic_cases.json`: 20, `grounding_cases.json`: 20, `safety_cases.json`:
+15) exercises intent classification, column/period/semantic resolution,
+numeric grounding, and safety behavior (unsupported questions, malformed
+responses, provider failures, causal-claim detection, evidence-reference
+validation) — entirely offline, using fixed canned "model responses" run
+through the real deterministic/validation code paths, no live API calls.
+`src/evaluation/runner.py` executes a benchmark file and reports pass/fail
+per case; `metrics.py`/`reports.py` summarize overall and per-category
+accuracy. All 90 cases currently pass.
+
+#### Streamlit additions (V0.8.16-17)
+
+Single-file view: a **Detected Semantic Roles** table, a **Forecast
+(baseline)** caption under Trend Analysis, an **Investigate anomalies**
+expander, and a **"Why this answer?"** evidence panel (with an optional
+**Explain with AI** button) under Q&A. Multi-file view: a deterministic
+**"Why this answer?"** evidence panel under the comparison answer. All new
+per-file state (`schema_results`, `qa_evidence`, `qa_ai_explanations`,
+`qa_ai_explanation_cache_keys`) is namespaced by `file_id` using the same
+mechanism as the existing V0.7 per-file state, so it is cleared on file
+removal/clear and never leaks across files exactly like the pre-existing
+state.
+
 ## Testing
 
-Full test suite: **665 passed, 2 deselected** (a `pytest.ini` marker
+Full test suite: **854 passed, 2 deselected** (a `pytest.ini` marker
 excludes network-dependent Gemini integration tests by default).
 
 Focused test suites:
@@ -258,6 +377,12 @@ Focused test suites:
 | V0.7.5 Multi-file Q&A (`multi_file_qa_prompt_builder`, `multi_file_qa_interpreter`, `qa_answer` comparison answers) | 32 passed |
 | V0.7.6 Multi-file charts (`multi_file_chart_intent_interpreter`, `build_multi_file_chart_spec`) | 20 passed |
 | V0.7.1/7/8 Multi-file Streamlit (AppTest: registration, roles, remove/clear, comparison Q&A/chart/insight, stale-result prevention) | 28 passed |
+| V0.8 Schema (`schema_models`, `schema_analyzer`, `schema_resolver`, `semantic_interpreter`) | 53 passed |
+| V0.8 Evidence (`evidence_models`, `evidence_builder`, `evidence_validator`, `evidence_formatter`, `evidence_ai_interpreter`, `evidence_qa`) | 63 passed |
+| V0.8 Advanced analytics + forecasting + anomaly investigation | 44 passed |
+| V0.8 Evaluation framework (models, metrics/reports, runner against the 90-case benchmark) | 21 passed |
+| V0.8 cross-module integration (semantic proposal → validation, analysis → evidence) | 4 passed |
+| V0.8 Streamlit (AppTest: semantic roles, forecast, anomaly investigation, evidence panels) | 8 passed |
 
 Run the full suite from the repo root with `pytest`.
 
@@ -300,6 +425,38 @@ Run the full suite from the repo root with `pytest`.
   multi-file comparison view is. Switch back to a single upload (Clear All
   Files, then re-upload one file) to use the single-file dashboard.
 
+**Trusted & Intelligent Analytics (V0.8) is also intentionally narrow:**
+
+- Semantic schema detection uses a small, fixed vocabulary (5 roles, 7
+  semantic types) — no general-purpose ontology, and no unit-conversion
+  table (a detected currency `unit` like "EUR" is descriptive only).
+- `resolve_semantic_column()` uses a small explicit synonym list and
+  lexical (keyword-overlap) scoring — no embeddings, no ML model, and it
+  only ever runs as a fallback after exact/fuzzy column resolution finds
+  nothing.
+- Forecasting is exactly two baselines (`naive`, `seasonal_naive`) — no
+  ARIMA/Prophet/ML forecasting, and no forecasting UI beyond a single
+  next-period caption under Trend Analysis.
+- Anomaly investigation reports coincident changes in other measures
+  during the same period; it does not analyze root cause, does not rank
+  which coincident change is most relevant, and does not visualize
+  multiple measures together.
+- The causal-language guard (`contains_unsupported_causal_claim`) is a
+  deterministic phrase-matcher (like the existing numeric-grounding
+  regexes), not a semantic understanding of causality — it can miss a
+  causal claim phrased unusually, though it deliberately errs toward
+  over-flagging borderline phrasing rather than under-flagging.
+- The evaluation framework (`src/evaluation/`) runs entirely offline
+  against fixed, hand-authored "model responses" — it benchmarks the
+  deterministic/validation code paths a real LLM response would go
+  through, not any particular live model's actual judgment.
+- Evidence-aware Q&A/AI insight (`src/evidence_qa.py`,
+  `src/evidence_ai_interpreter.py`) exist as callable modules with full
+  test coverage but are not yet wired into a dedicated Streamlit "ask with
+  evidence" flow beyond the existing "Why this answer?" panel and
+  "Explain with AI" button under single-file Q&A, and the read-only
+  evidence panel under multi-file comparison.
+
 ## Development Roadmap
 
 | Version | Milestone | Status |
@@ -311,12 +468,14 @@ Run the full suite from the repo root with `pytest`.
 | V0.5 | Q&A | COMPLETE |
 | V0.6 | Q&A-driven Dynamic Charts | COMPLETE |
 | V0.7 | Multi-file Comparison (Q&A, charts, AI insight) | COMPLETE |
-| V0.8 | Advanced multi-file analytics, PowerPoint Generator | PLANNED |
+| V0.8 | Trusted & Intelligent Analytics (schema, evidence, advanced analytics, forecasting, evaluation) | COMPLETE |
+| V0.9 | PowerPoint Generator | PLANNED |
 | V1.0 | Integration / Polish | PLANNED |
 
-**Deferred to V0.8+:** row-level diffing, semantic/fuzzy column matching
-across files, automatic role inference, richer cross-file visualization
-(trend/anomaly charts across files, auto-recommended charts), unit
-conversion, forecasting, advanced anomaly analysis, persistent/
-database-backed storage, RAG, agentic workflows, M365 integration,
-advanced auth, and production deployment infrastructure.
+**Deferred to V0.9+:** RAG, agentic/autonomous workflows, database-backed
+persistence, authentication, cloud deployment infrastructure, persistent
+conversation memory, row-level semantic diffing, a general-purpose
+semantic ontology, automatic unit conversion, a larger forecasting model
+zoo, advanced multi-file forecasting, richer cross-file anomaly
+visualization, a production observability platform, and Microsoft
+365/SharePoint/Outlook integration.

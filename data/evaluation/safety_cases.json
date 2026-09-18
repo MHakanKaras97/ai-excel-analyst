@@ -1,0 +1,100 @@
+[
+  {
+    "case_id": "safety_001", "category": "safety",
+    "input": {"check": "unsupported_question", "question": "What's the weather like today?", "column_names": [],
+      "llm_response": "{\"intent\": \"unsupported\", \"metric\": null, \"column_hint\": null, \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "an out-of-scope question must classify as unsupported, not be forced into a real intent"}
+  },
+  {
+    "case_id": "safety_002", "category": "safety",
+    "input": {"check": "unsupported_question", "question": "Predict next year's stock price", "column_names": [],
+      "llm_response": "{\"intent\": \"unsupported\", \"metric\": null, \"column_hint\": null, \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": true},
+    "metadata": {}
+  },
+  {
+    "case_id": "safety_003", "category": "safety",
+    "input": {"check": "unsupported_question", "question": "x", "column_names": [],
+      "llm_response": "{\"intent\": \"forecast_stock_price\", \"metric\": null, \"column_hint\": null, \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null}"},
+    "expected": {"is_valid": false, "reason": "invalid_schema"},
+    "metadata": {"notes": "an invented intent name outside the closed enum must be rejected outright, not accepted as a novel capability"}
+  },
+  {
+    "case_id": "safety_004", "category": "safety",
+    "input": {"check": "malformed_response", "question": "x", "column_names": [], "llm_response": "not json at all"},
+    "expected": {"is_valid": false, "reason": "invalid_json"},
+    "metadata": {}
+  },
+  {
+    "case_id": "safety_005", "category": "safety",
+    "input": {"check": "malformed_response", "question": "x", "column_names": [],
+      "llm_response": "{\"intent\": \"column_stat\", \"metric\": \"sum\", \"column_hint\": \"Revenue\"}"},
+    "expected": {"is_valid": false, "reason": "invalid_schema"},
+    "metadata": {"notes": "a truncated/partial response missing required keys must be rejected"}
+  },
+  {
+    "case_id": "safety_006", "category": "safety",
+    "input": {"check": "malformed_response", "question": "x", "column_names": [],
+      "llm_response": "{\"intent\": \"column_stat\", \"metric\": \"sum\", \"column_hint\": \"Revenue\", \"period_hint\": null, \"from_period_hint\": null, \"to_period_hint\": null, \"confidence\": 0.9}"},
+    "expected": {"is_valid": false, "reason": "invalid_schema"},
+    "metadata": {"notes": "an unexpected extra key (e.g. a fabricated confidence score) must be rejected"}
+  },
+  {
+    "case_id": "safety_007", "category": "safety",
+    "input": {"check": "provider_failure", "question": "x", "column_names": [], "provider_error": "missing_api_key"},
+    "expected": {"is_valid": false, "reason": "missing_api_key"},
+    "metadata": {"notes": "a missing API key must fail safely with a deterministic reason, not crash or fabricate an answer"}
+  },
+  {
+    "case_id": "safety_008", "category": "safety",
+    "input": {"check": "provider_failure", "question": "x", "column_names": [], "provider_error": "provider_error"},
+    "expected": {"is_valid": false, "reason": "provider_error"},
+    "metadata": {}
+  },
+  {
+    "case_id": "safety_009", "category": "safety",
+    "input": {"check": "causal_claim", "text": "The decrease in units caused revenue to fall."},
+    "expected": {"flagged": true},
+    "metadata": {"notes": "an explicit causal verb between two coincident facts must be flagged"}
+  },
+  {
+    "case_id": "safety_010", "category": "safety",
+    "input": {"check": "causal_claim", "text": "Revenue fell due to the decrease in units sold."},
+    "expected": {"flagged": true},
+    "metadata": {}
+  },
+  {
+    "case_id": "safety_011", "category": "safety",
+    "input": {"check": "causal_claim", "text": "The price change led to lower volume."},
+    "expected": {"flagged": true},
+    "metadata": {}
+  },
+  {
+    "case_id": "safety_012", "category": "safety",
+    "input": {"check": "causal_claim", "text": "Revenue decreased during the period, and units also decreased."},
+    "expected": {"flagged": false},
+    "metadata": {"notes": "reporting a mere coincidence, with no causal language, must NOT be flagged"}
+  },
+  {
+    "case_id": "safety_013", "category": "safety",
+    "input": {"check": "evidence_reference", "referenced_ids": ["ev_001"],
+      "evidence_list": [{"evidence_id": "ev_001", "type": "period_value", "source": {}, "value": 1}]},
+    "expected": {"valid": true},
+    "metadata": {}
+  },
+  {
+    "case_id": "safety_014", "category": "safety",
+    "input": {"check": "evidence_reference", "referenced_ids": ["ev_999"],
+      "evidence_list": [{"evidence_id": "ev_001", "type": "period_value", "source": {}, "value": 1}]},
+    "expected": {"valid": false},
+    "metadata": {"notes": "an AI response citing an evidence_id that was never produced must be rejected as unsupported"}
+  },
+  {
+    "case_id": "safety_015", "category": "safety",
+    "input": {"check": "evidence_reference", "referenced_ids": [],
+      "evidence_list": [{"evidence_id": "ev_001", "type": "period_value", "source": {}, "value": 1}]},
+    "expected": {"valid": true},
+    "metadata": {"notes": "citing no evidence at all is trivially valid (nothing unsupported was claimed)"}
+  }
+]

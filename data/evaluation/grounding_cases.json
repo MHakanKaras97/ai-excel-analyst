@@ -1,0 +1,140 @@
+[
+  {
+    "case_id": "ground_001", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 460000.0, "mean": 115000.0}]}},
+      "llm_response": "{\"summary\": \"Total revenue is 460000.0.\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "a supported number is accepted"}
+  },
+  {
+    "case_id": "ground_002", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 460000.0, "mean": 115000.0}]}},
+      "llm_response": "{\"summary\": \"Total revenue is 999999.\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": false, "reason": "hallucinated_numeric_value"},
+    "metadata": {"notes": "an invented number must be rejected"}
+  },
+  {
+    "case_id": "ground_003", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 460000.0, "mean": 115000.0}]}},
+      "llm_response": "{\"summary\": \"Revenue is 460000.0.\", \"key_insights\": [\"Revenue 460000.0 confirmed.\"], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "reusing the same supported number twice is fine"}
+  },
+  {
+    "case_id": "ground_004", "category": "grounding",
+    "input": {"analytics_payload": {"period_comparison": {"comparisons": [{"previous": 150000, "current": 125000, "absolute_change": -25000, "percentage_change": -16.67}]}},
+      "llm_response": "{\"summary\": \"In 2025-03, revenue changed by -25000.\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "a date-shaped label (2025-03) is masked, not mistaken for a numeric claim"}
+  },
+  {
+    "case_id": "ground_005", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 460000.0, "mean": 115000.0}]}},
+      "llm_response": "{\"summary\": \"There are 2 columns of data.\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "a small integer (< 10) is common prose and is not checked as a numeric claim"}
+  },
+  {
+    "case_id": "ground_006", "category": "grounding",
+    "input": {"analytics_payload": {"period_comparison": {"comparisons": [{"previous": 150000, "current": 125000, "absolute_change": -25000, "percentage_change": -16.67}]}},
+      "llm_response": "{\"summary\": \"Change was -16.67 percent.\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "a supported negative decimal is accepted"}
+  },
+  {
+    "case_id": "ground_007", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 460000.0, "mean": 115000.0}]}},
+      "llm_response": "{\"summary\": \"Revenue is about 460000.\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "a truncated/rounded integer form of a supported decimal is tolerated"}
+  },
+  {
+    "case_id": "ground_008", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Budget_2024", "sum": 2024.0}]}},
+      "llm_response": "{\"summary\": \"Budget_2024 sums to 2024.0.\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "digits embedded in a label are masked so the label itself is not mistaken for a numeric claim needing separate support"}
+  },
+  {
+    "case_id": "ground_009", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Budget_2024", "sum": 2024.0}]}},
+      "llm_response": "{\"summary\": \"Budget_2024 total is 999999.\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": false, "reason": "hallucinated_numeric_value"},
+    "metadata": {"notes": "label-digit masking must not create a bypass for a genuinely unsupported number"}
+  },
+  {
+    "case_id": "ground_010", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 460000.0, "mean": 115000.0}]}},
+      "llm_response": "not json"},
+    "expected": {"is_valid": false, "reason": "malformed_output"},
+    "metadata": {}
+  },
+  {
+    "case_id": "ground_011", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 3266656.8, "mean": 115000.0}]}},
+      "llm_response": "{\"summary\": \"Total revenue is 3,266,656.8.\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "comma-grouped number formatting is parsed and matched"}
+  },
+  {
+    "case_id": "ground_012", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 3266656.8, "mean": 115000.0}]}},
+      "llm_response": "{\"summary\": \"There are 15 anomalies.\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": false, "reason": "hallucinated_numeric_value"},
+    "metadata": {"notes": "a large integer (>= 10) IS checked and must be supported"}
+  },
+  {
+    "case_id": "ground_013", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 460000.0}]}}, "provider_error": "provider_error"},
+    "expected": {"is_valid": false, "reason": "provider_error"},
+    "metadata": {}
+  },
+  {
+    "case_id": "ground_014", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 460000.0}]}}, "llm_response": ""},
+    "expected": {"is_valid": false, "reason": "empty_response"},
+    "metadata": {}
+  },
+  {
+    "case_id": "ground_015", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 460000.0}]}},
+      "llm_response": "{\"summary\": \"x\", \"key_insights\": [], \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": false, "reason": "malformed_output"},
+    "metadata": {"notes": "a missing required key (trend_interpretation) fails schema validation"}
+  },
+  {
+    "case_id": "ground_016", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 460000.0}]}},
+      "llm_response": "{\"summary\": \"x\", \"key_insights\": [], \"trend_interpretation\": 123, \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": false, "reason": "malformed_output"},
+    "metadata": {"notes": "trend_interpretation must be a string or null, never a number"}
+  },
+  {
+    "case_id": "ground_017", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 460000.0}]}},
+      "llm_response": "{\"summary\": \"x\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": \"not a list\", \"recommendations\": []}"},
+    "expected": {"is_valid": false, "reason": "malformed_output"},
+    "metadata": {"notes": "warnings must be a list, never a bare string"}
+  },
+  {
+    "case_id": "ground_018", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 3266656.8, "mean": 115000.0}]}},
+      "llm_response": "{\"summary\": \"x\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": [\"Consider reviewing the 3,266,656.8 total.\"]}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "a supported number cited inside a recommendation is fine"}
+  },
+  {
+    "case_id": "ground_019", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 3266656.8, "mean": 115000.0}]}},
+      "llm_response": "{\"summary\": \"x\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": [\"Consider a target of 5000000.\"]}"},
+    "expected": {"is_valid": false, "reason": "hallucinated_numeric_value"},
+    "metadata": {"notes": "an invented number inside a recommendation is still checked and rejected"}
+  },
+  {
+    "case_id": "ground_020", "category": "grounding",
+    "input": {"analytics_payload": {"numeric_summary": {"columns": [{"name": "Revenue", "sum": 460000.0, "mean": 115000.0}]}},
+      "llm_response": "{\"summary\": \"Average revenue is 115000.0.\", \"key_insights\": [], \"trend_interpretation\": null, \"warnings\": [], \"recommendations\": []}"},
+    "expected": {"is_valid": true},
+    "metadata": {"notes": "a supported mean value is accepted"}
+  }
+]
